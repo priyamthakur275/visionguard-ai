@@ -1,4 +1,4 @@
-﻿# Byte-compiled / optimized / DLL files
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
@@ -26,11 +26,14 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Virtual Environments
+# Virtual Environments & JS Dependencies
 venv/
 .venv/
 ENV/
 env/
+node_modules/
+frontend/node_modules/
+frontend/dist/
 
 # Testing & Coverage
 .pytest_cache/

@@ -1,0 +1,15 @@
+﻿version: '3.8'
+
+services:
+  visionguard-web:
+    build: .
+    container_name: visionguard_ai_web
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data/database:/app/data/database
+      - ./data/images:/app/data/images
+      - ./data/logs:/app/data/logs
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped

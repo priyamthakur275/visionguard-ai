@@ -1,0 +1,915 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VisionGuard AI — Smart Face Recognition & Robot Tracking</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #121417;
+      --bg-card: #1A1D24;
+      --bg-card-hover: #222630;
+      --border-color: #2A2F3D;
+      --accent: #3498DB;
+      --accent-hover: #2980B9;
+      --success: #2ECC71;
+      --warning: #F39C12;
+      --danger: #E74C3C;
+      --text-primary: #FFFFFF;
+      --text-secondary: #9BA3AF;
+      --text-muted: #6B7280;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    header {
+      background-color: var(--bg-card);
+      border-bottom: 1px solid var(--border-color);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      background: linear-gradient(135deg, var(--accent), #9B59B6);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1.2rem;
+    }
+    .brand-text h1 { font-size: 1.25rem; font-weight: 700; }
+    .brand-text p { font-size: 0.8rem; color: var(--text-secondary); }
+
+    .header-badges {
+      display: flex;
+      gap: 0.75rem;
+    }
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.35rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background-color: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+    }
+    .badge-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: var(--success);
+    }
+
+    /* Main Navigation */
+    nav {
+      background-color: var(--bg-card);
+      border-bottom: 1px solid var(--border-color);
+      padding: 0 2rem;
+      display: flex;
+      gap: 1.5rem;
+    }
+    .nav-tab {
+      padding: 1rem 0.5rem;
+      color: var(--text-secondary);
+      font-weight: 600;
+      font-size: 0.9rem;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+      user-select: none;
+    }
+    .nav-tab:hover { color: var(--text-primary); }
+    .nav-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    /* Layout Containers */
+    main {
+      flex: 1;
+      padding: 2rem;
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+
+    /* Cards */
+    .card {
+      background-color: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1.25rem;
+    }
+    .card-header h2 { font-size: 1.1rem; font-weight: 600; }
+
+    /* Live Recognition Grid */
+    .viewport-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 1.5rem;
+    }
+    @media (max-width: 992px) {
+      .viewport-grid { grid-template-columns: 1fr; }
+    }
+
+    /* Video Frame */
+    .video-container {
+      position: relative;
+      background-color: #000;
+      border-radius: 10px;
+      overflow: hidden;
+      aspect-ratio: 16/9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    #webcam {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+    .video-placeholder {
+      color: var(--text-secondary);
+      text-align: center;
+      padding: 2rem;
+    }
+
+    /* Control Buttons */
+    .btn-group {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+    button, .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.65rem 1.25rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.85rem;
+      font-family: inherit;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s ease;
+    }
+    .btn-primary { background-color: var(--accent); color: #FFF; }
+    .btn-primary:hover { background-color: var(--accent-hover); }
+    .btn-success { background-color: var(--success); color: #FFF; }
+    .btn-success:hover { background-color: #27AE60; }
+    .btn-danger { background-color: var(--danger); color: #FFF; }
+    .btn-danger:hover { background-color: #C0392B; }
+    .btn-outline {
+      background-color: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+    }
+    .btn-outline:hover { background-color: var(--bg-card-hover); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Robot Telemetry Simulator */
+    .robot-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+    .robot-canvas-container {
+      background-color: #0A0C0E;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      aspect-ratio: 1/1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    #robotCanvas { width: 100%; height: 100%; }
+
+    .command-badge {
+      display: inline-block;
+      text-align: center;
+      padding: 0.75rem;
+      border-radius: 8px;
+      font-family: var(--font-mono);
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      background-color: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+    }
+
+    /* Forms */
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+    .form-group label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: var(--text-secondary);
+    }
+    input[type="text"], select {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background-color: #121417;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 0.9rem;
+      outline: none;
+    }
+    input[type="text"]:focus, select:focus {
+      border-color: var(--accent);
+    }
+
+    /* Drag and Drop Zone */
+    .drop-zone {
+      border: 2px dashed var(--border-color);
+      border-radius: 8px;
+      padding: 2.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      background-color: rgba(255, 255, 255, 0.01);
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background-color: rgba(52, 152, 219, 0.05);
+    }
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+    .preview-item {
+      aspect-ratio: 1/1;
+      border-radius: 6px;
+      overflow: hidden;
+      border: 1px solid var(--border-color);
+    }
+    .preview-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9rem;
+    }
+    th {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      color: var(--text-secondary);
+      border-bottom: 1px solid var(--border-color);
+      font-weight: 600;
+    }
+    td {
+      padding: 1rem;
+      border-bottom: 1px solid var(--border-color);
+    }
+    tr:hover td { background-color: var(--bg-card-hover); }
+
+    /* Alert Boxes */
+    .alert {
+      padding: 1rem;
+      border-radius: 8px;
+      margin-bottom: 1.25rem;
+      font-size: 0.85rem;
+      line-height: 1.4;
+    }
+    .alert-info { background-color: rgba(52, 152, 219, 0.1); border: 1px solid var(--accent); }
+    .alert-success { background-color: rgba(46, 204, 113, 0.1); border: 1px solid var(--success); }
+    .alert-danger { background-color: rgba(231, 76, 60, 0.1); border: 1px solid var(--danger); }
+
+    /* Footer */
+    footer {
+      background-color: var(--bg-card);
+      border-top: 1px solid var(--border-color);
+      padding: 1rem 2rem;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: auto;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Header -->
+  <header>
+    <div class="brand">
+      <div class="brand-icon">VG</div>
+      <div class="brand-text">
+        <h1>VisionGuard AI</h1>
+        <p>Smart Face Recognition & Autonomous Robot Tracking</p>
+      </div>
+    </div>
+    <div class="header-badges">
+      <div class="badge"><div class="badge-dot" id="apiStatusDot"></div> API: <span id="apiStatusText">Connected</span></div>
+      <div class="badge">Model: <strong id="modelNameText">Buffalo_L</strong></div>
+      <div class="badge">Identities: <strong id="totalIdentitiesText">0</strong></div>
+    </div>
+  </header>
+
+  <!-- Navigation Bar -->
+  <nav>
+    <div class="nav-tab active" onclick="switchTab('recognition')">📷 Live Recognition & Tracking</div>
+    <div class="nav-tab" onclick="switchTab('enroll')">➕ Enroll Person</div>
+    <div class="nav-tab" onclick="switchTab('persons')">👥 Registered Persons</div>
+    <div class="nav-tab" onclick="switchTab('system')">⚙️ System Architecture</div>
+  </nav>
+
+  <main>
+    <!-- TAB 1: Live Recognition -->
+    <div class="tab-pane active" id="tab-recognition">
+      <div class="viewport-grid">
+        <!-- Left: Camera Stream -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Live Camera Viewport</h2>
+            <div style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-secondary);" id="fpsDisplay">
+              FPS: -- | Latency: -- ms
+            </div>
+          </div>
+
+          <div class="video-container">
+            <video id="webcam" autoplay playsinline muted></video>
+            <canvas id="overlay"></canvas>
+            <div class="video-placeholder" id="placeholder">
+              <p style="font-size: 1.1rem; margin-bottom: 0.5rem;">Webcam is Offline</p>
+              <p style="font-size: 0.85rem;">Click 'Start Webcam' below to stream browser video for recognition.</p>
+            </div>
+          </div>
+
+          <div class="btn-group" style="justify-content: space-between;">
+            <div style="display: flex; gap: 0.5rem;">
+              <button class="btn btn-success" id="startCamBtn" onclick="startCamera()">▶ Start Webcam</button>
+              <button class="btn btn-outline" id="stopCamBtn" onclick="stopCamera()" disabled>■ Stop Webcam</button>
+            </div>
+            <div style="display: flex; gap: 0.5rem; align-items: center;">
+              <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">Target:</label>
+              <select id="targetSelect" style="width: 160px; padding: 0.5rem;">
+                <option value="">(None)</option>
+              </select>
+              <button class="btn btn-danger" onclick="emergencyStop()">🛑 EMERGENCY STOP</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Robot Telemetry Simulation -->
+        <div class="card robot-panel">
+          <div class="card-header">
+            <h2>Robot Telemetry Simulation</h2>
+          </div>
+
+          <div class="robot-canvas-container">
+            <canvas id="robotCanvas" width="300" height="300"></canvas>
+          </div>
+
+          <div class="command-badge" id="commandBadge" style="color: var(--text-secondary);">
+            COMMAND: STOP
+          </div>
+
+          <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.6; background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px;">
+            <div><strong>Active State:</strong> <span id="robotStateText">Idle</span></div>
+            <div><strong>Distance to Target:</strong> <span id="robotDistText">-- cm</span></div>
+            <div><strong>Horizontal Offset:</strong> <span id="robotOffsetText">0 px</span></div>
+            <div><strong>Decision Reason:</strong> <span id="robotReasonText">No active target</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: Enroll Person -->
+    <div class="tab-pane" id="tab-enroll">
+      <div class="card" style="max-width: 700px; margin: 0 auto;">
+        <div class="card-header">
+          <h2>Enroll New Identity</h2>
+        </div>
+
+        <div class="alert alert-info">
+          <strong>Biometric Security Note:</strong> Upload 2–20 clear, uncompressed photos of the individual under varied angles and lighting. Each photo must contain <em>exactly one</em> face.
+        </div>
+
+        <form id="enrollForm" onsubmit="submitEnrollment(event)">
+          <div class="form-group">
+            <label for="enrollName">Full Person Name *</label>
+            <input type="text" id="enrollName" placeholder="e.g. Priyam Thakur" required>
+          </div>
+
+          <div class="form-group">
+            <label>Face Images (2 to 20 Photos) *</label>
+            <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+              <p style="font-size: 1rem; margin-bottom: 0.25rem;">📁 Click or Drag & Drop Photos Here</p>
+              <p style="font-size: 0.8rem; color: var(--text-secondary);">Supports JPG, PNG, WEBP</p>
+            </div>
+            <input type="file" id="fileInput" multiple accept="image/*" style="display: none;" onchange="handleFileSelect(event)">
+            <div class="preview-grid" id="previewGrid"></div>
+          </div>
+
+          <div class="form-group" style="display: flex; gap: 0.5rem; align-items: flex-start;">
+            <input type="checkbox" id="consentCheckbox" required style="margin-top: 4px;">
+            <label for="consentCheckbox" style="font-size: 0.85rem; color: var(--text-secondary);">
+              I confirm that biometric consent has been obtained to store and process face embeddings locally for identification.
+            </label>
+          </div>
+
+          <div id="enrollAlert" style="display: none;"></div>
+
+          <button type="submit" class="btn btn-primary" id="enrollSubmitBtn" style="width: 100%;">
+            ✅ Enroll Person & Extract Embeddings
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <!-- TAB 3: Registered Persons -->
+    <div class="tab-pane" id="tab-persons">
+      <div class="card">
+        <div class="card-header">
+          <h2>Registered Identity Gallery</h2>
+          <button class="btn btn-outline" onclick="loadPersons()">🔄 Refresh</button>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Identity Name</th>
+              <th>UUID Identifier</th>
+              <th>Enrolled Photos</th>
+              <th>Embeddings</th>
+              <th>Date Registered</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="personsTableBody">
+            <tr><td colspan="6" style="text-align: center; color: var(--text-secondary);">Loading gallery...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- TAB 4: System Architecture -->
+    <div class="tab-pane" id="tab-system">
+      <div class="card">
+        <div class="card-header">
+          <h2>System Architecture & Cloud vs. Local Boundary</h2>
+        </div>
+        <div style="font-size: 0.9rem; line-height: 1.6; color: var(--text-secondary);">
+          <p style="margin-bottom: 1rem;">
+            VisionGuard AI uses a decoupled pipeline where deep learning inference executes on the server while video capture runs client-side inside standard web browsers:
+          </p>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem;">
+            <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+              <h3 style="color: var(--accent); margin-bottom: 0.5rem;">🌐 Web Live Demo Mode</h3>
+              <ul style="padding-left: 1.25rem;">
+                <li><strong>Video Capture:</strong> Client-side HTML5 WebRTC stream</li>
+                <li><strong>Inference:</strong> InsightFace Buffalo_L ONNX Engine</li>
+                <li><strong>Robot Telemetry:</strong> High-precision 2D Canvas Simulation</li>
+                <li><strong>Network:</strong> REST & Low-Latency WebSocket</li>
+              </ul>
+            </div>
+            <div style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px; border: 1px solid var(--border-color);">
+              <h3 style="color: var(--success); margin-bottom: 0.5rem;">💻 Native Desktop App Mode</h3>
+              <ul style="padding-left: 1.25rem;">
+                <li><strong>Video Capture:</strong> Direct OpenCV OS Webcam Capture</li>
+                <li><strong>Microcontroller:</strong> PySerial UART to Arduino/ESP32</li>
+                <li><strong>UI Framework:</strong> CustomTkinter (Dark Theme)</li>
+                <li><strong>Packaging:</strong> Standalone Windows Executable</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <div>VisionGuard AI — Maintained and developed by <strong>Priyam Thakur</strong></div>
+    <div>Status: <span style="color: var(--success);">Operational</span></div>
+  </footer>
+
+  <script>
+    // Tab switching
+    function switchTab(tabId) {
+      document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('tab-' + tabId).classList.add('active');
+      if (tabId === 'persons') loadPersons();
+    }
+
+    // State
+    let isStreaming = false;
+    let ws = null;
+    let selectedFiles = [];
+    let animationId = null;
+    let currentRobotData = { command: "STOP", offset_px: 0, distance_cm: -1, reason: "Idle" };
+
+    const webcam = document.getElementById('webcam');
+    const overlay = document.getElementById('overlay');
+    const ctx = overlay.getContext('2d');
+    const placeholder = document.getElementById('placeholder');
+    const robotCanvas = document.getElementById('robotCanvas');
+    const rCtx = robotCanvas.getContext('2d');
+
+    // API Diagnostics & Persons Initial Load
+    async function init() {
+      try {
+        const res = await fetch('/api/health');
+        const data = await res.json();
+        document.getElementById('totalIdentitiesText').innerText = data.total_identities;
+        loadPersons();
+      } catch (e) {
+        document.getElementById('apiStatusText').innerText = 'Offline';
+        document.getElementById('apiStatusDot').style.backgroundColor = 'var(--danger)';
+      }
+      drawRobotSimulation();
+    }
+
+    async function loadPersons() {
+      try {
+        const res = await fetch('/api/persons');
+        const data = await res.json();
+        const tbody = document.getElementById('personsTableBody');
+        const targetSelect = document.getElementById('targetSelect');
+
+        targetSelect.innerHTML = '<option value="">(None - Tracking Off)</option>';
+        if (!data.persons || data.persons.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-secondary);">No registered identities enrolled yet.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = '';
+        data.persons.forEach(p => {
+          // Table Row
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td><strong>${p.name}</strong></td>
+            <td><code style="font-family: var(--font-mono); font-size: 0.8rem;">${p.identity_id}</code></td>
+            <td>${p.image_count}</td>
+            <td>${p.embedding_count}</td>
+            <td>${new Date(p.enrollment_date).toLocaleDateString()}</td>
+            <td><button class="btn btn-danger" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="deletePerson('${p.name}')">Delete</button></td>
+          `;
+          tbody.appendChild(tr);
+
+          // Select Option
+          const opt = document.createElement('option');
+          opt.value = p.name;
+          opt.innerText = p.name;
+          targetSelect.appendChild(opt);
+        });
+      } catch (e) {
+        console.error("Failed to load persons", e);
+      }
+    }
+
+    async function deletePerson(name) {
+      if (!confirm(`Are you sure you want to delete '${name}' and all associated face embeddings?`)) return;
+      try {
+        const res = await fetch(`/api/persons/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        if (res.ok) {
+          loadPersons();
+          init();
+        }
+      } catch (e) {
+        alert("Failed to delete person: " + e);
+      }
+    }
+
+    // Camera & WebSocket Streaming
+    async function startCamera() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 640 }, height: { ideal: 480 } }
+        });
+        webcam.srcObject = stream;
+        webcam.style.display = 'block';
+        placeholder.style.display = 'none';
+
+        webcam.onloadedmetadata = () => {
+          overlay.width = webcam.videoWidth;
+          overlay.height = webcam.videoHeight;
+          isStreaming = true;
+          document.getElementById('startCamBtn').disabled = true;
+          document.getElementById('stopCamBtn').disabled = false;
+          connectWebSocket();
+        };
+      } catch (err) {
+        alert("Could not access browser webcam: " + err.message);
+      }
+    }
+
+    function stopCamera() {
+      isStreaming = false;
+      if (webcam.srcObject) {
+        webcam.srcObject.getTracks().forEach(track => track.stop());
+        webcam.srcObject = null;
+      }
+      webcam.style.display = 'none';
+      placeholder.style.display = 'block';
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+      document.getElementById('startCamBtn').disabled = false;
+      document.getElementById('stopCamBtn').disabled = true;
+      if (ws) { ws.close(); ws = null; }
+      currentRobotData = { command: "STOP", offset_px: 0, distance_cm: -1, reason: "Webcam stopped" };
+      updateRobotHUD();
+    }
+
+    function connectWebSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(`${protocol}//${window.location.host}/ws/live`);
+
+      ws.onopen = () => {
+        sendFrameLoop();
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.error) return;
+
+        // Draw overlays
+        drawFaceOverlays(data.faces);
+
+        // Update Robot Data
+        if (data.robot) {
+          currentRobotData = data.robot;
+          updateRobotHUD();
+        }
+
+        // FPS & Latency
+        document.getElementById('fpsDisplay').innerText = `Latency: ${data.inference_time_ms} ms`;
+      };
+    }
+
+    const captureCanvas = document.createElement('canvas');
+    const captureCtx = captureCanvas.getContext('2d');
+
+    function sendFrameLoop() {
+      if (!isStreaming || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+      captureCanvas.width = 480;
+      captureCanvas.height = 360;
+      captureCtx.drawImage(webcam, 0, 0, 480, 360);
+
+      const targetName = document.getElementById('targetSelect').value;
+      const base64Data = captureCanvas.toDataURL('image/jpeg', 0.65);
+
+      ws.send(JSON.stringify({
+        image: base64Data,
+        target_name: targetName || null
+      }));
+
+      setTimeout(sendFrameLoop, 60); // ~15 FPS transmission
+    }
+
+    function drawFaceOverlays(faces) {
+      ctx.clearRect(0, 0, overlay.width, overlay.height);
+      if (!faces) return;
+
+      const scaleX = overlay.width / 480;
+      const scaleY = overlay.height / 360;
+
+      faces.forEach(f => {
+        const [x1, y1, x2, y2] = f.bbox;
+        const rx1 = x1 * scaleX;
+        const ry1 = y1 * scaleY;
+        const rw = (x2 - x1) * scaleX;
+        const rh = (y2 - y1) * scaleY;
+
+        ctx.strokeStyle = f.is_known ? '#2ECC71' : '#E74C3C';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(rx1, ry1, rw, rh);
+
+        const label = `${f.name} (${(f.similarity * 100).toFixed(0)}%) | ${f.distance_cm > 0 ? f.distance_cm + 'cm' : '--'}`;
+        ctx.font = 'bold 14px Inter, sans-serif';
+        const tw = ctx.measureText(label).width;
+
+        ctx.fillStyle = f.is_known ? '#2ECC71' : '#E74C3C';
+        ctx.fillRect(rx1, Math.max(0, ry1 - 24), tw + 12, 24);
+
+        ctx.fillStyle = '#000000';
+        ctx.fillText(label, rx1 + 6, Math.max(16, ry1 - 7));
+      });
+    }
+
+    function updateRobotHUD() {
+      const badge = document.getElementById('commandBadge');
+      badge.innerText = `COMMAND: ${currentRobotData.command}`;
+      if (currentRobotData.command === 'FORWARD') badge.style.color = 'var(--success)';
+      else if (currentRobotData.command === 'BACKWARD') badge.style.color = 'var(--warning)';
+      else if (currentRobotData.command === 'LEFT' || currentRobotData.command === 'RIGHT') badge.style.color = 'var(--accent)';
+      else badge.style.color = 'var(--danger)';
+
+      document.getElementById('robotDistText').innerText = currentRobotData.distance_cm > 0 ? currentRobotData.distance_cm + ' cm' : '--';
+      document.getElementById('robotOffsetText').innerText = (currentRobotData.offset_px || 0) + ' px';
+      document.getElementById('robotReasonText').innerText = currentRobotData.reason || '--';
+      document.getElementById('robotStateText').innerText = currentRobotData.command;
+    }
+
+    function emergencyStop() {
+      document.getElementById('targetSelect').value = '';
+      currentRobotData = { command: "STOP", offset_px: 0, distance_cm: -1, reason: "EMERGENCY STOP TRIGGERED" };
+      updateRobotHUD();
+    }
+
+    // 2D Interactive Robot Canvas Renderer
+    function drawRobotSimulation() {
+      rCtx.clearRect(0, 0, 300, 300);
+
+      // Grid Lines
+      rCtx.strokeStyle = '#1E232B';
+      rCtx.lineWidth = 1;
+      for (let i = 0; i < 300; i += 30) {
+        rCtx.beginPath(); rCtx.moveTo(i, 0); rCtx.lineTo(i, 300); rCtx.stroke();
+        rCtx.beginPath(); rCtx.moveTo(0, i); rCtx.lineTo(300, i); rCtx.stroke();
+      }
+
+      // Safe Distance Arc Bands
+      const cx = 150, cy = 250;
+      rCtx.strokeStyle = 'rgba(231, 76, 60, 0.3)'; // Too close
+      rCtx.beginPath(); rCtx.arc(cx, cy, 50, Math.PI, 0); rCtx.stroke();
+
+      rCtx.strokeStyle = 'rgba(46, 204, 113, 0.4)'; // Ideal
+      rCtx.beginPath(); rCtx.arc(cx, cy, 100, Math.PI, 0); rCtx.stroke();
+
+      rCtx.strokeStyle = 'rgba(243, 156, 18, 0.3)'; // Too far
+      rCtx.beginPath(); rCtx.arc(cx, cy, 150, Math.PI, 0); rCtx.stroke();
+
+      // Robot Base (Chassis)
+      rCtx.fillStyle = '#34495E';
+      rCtx.fillRect(cx - 25, cy - 20, 50, 40);
+
+      // Left and Right Wheels
+      rCtx.fillStyle = currentRobotData.command === 'LEFT' ? '#3498DB' : '#2C3E50';
+      rCtx.fillRect(cx - 32, cy - 18, 7, 36);
+
+      rCtx.fillStyle = currentRobotData.command === 'RIGHT' ? '#3498DB' : '#2C3E50';
+      rCtx.fillRect(cx + 25, cy - 18, 7, 36);
+
+      // Robot Heading Arrow
+      rCtx.fillStyle = '#3498DB';
+      rCtx.beginPath();
+      rCtx.moveTo(cx, cy - 25);
+      rCtx.lineTo(cx - 8, cy - 12);
+      rCtx.lineTo(cx + 8, cy - 12);
+      rCtx.closePath();
+      rCtx.fill();
+
+      // If Target Tracked, Draw Ray and Target Marker
+      if (currentRobotData.distance_cm > 0) {
+        const rayLen = Math.min(220, Math.max(30, currentRobotData.distance_cm * 1.5));
+        const angleOffset = ((currentRobotData.offset_px || 0) / 480) * 0.6;
+        const tx = cx + Math.sin(angleOffset) * rayLen;
+        const ty = cy - Math.cos(angleOffset) * rayLen;
+
+        // Laser Tracking Ray
+        rCtx.strokeStyle = '#2ECC71';
+        rCtx.lineWidth = 2;
+        rCtx.setLineDash([4, 4]);
+        rCtx.beginPath();
+        rCtx.moveTo(cx, cy - 20);
+        rCtx.lineTo(tx, ty);
+        rCtx.stroke();
+        rCtx.setLineDash([]);
+
+        // Target Dot
+        rCtx.fillStyle = '#2ECC71';
+        rCtx.beginPath();
+        rCtx.arc(tx, ty, 8, 0, 2 * Math.PI);
+        rCtx.fill();
+      }
+
+      requestAnimationFrame(drawRobotSimulation);
+    }
+
+    // Enrollment Handlers
+    function handleFileSelect(e) {
+      const files = Array.from(e.target.files);
+      selectedFiles = selectedFiles.concat(files);
+      renderPreviews();
+    }
+
+    function renderPreviews() {
+      const grid = document.getElementById('previewGrid');
+      grid.innerHTML = '';
+      selectedFiles.forEach((f, idx) => {
+        const div = document.createElement('div');
+        div.className = 'preview-item';
+        const img = document.createElement('img');
+        img.src = URL.createObjectURL(f);
+        div.appendChild(img);
+        grid.appendChild(div);
+      });
+    }
+
+    async function submitEnrollment(e) {
+      e.preventDefault();
+      const name = document.getElementById('enrollName').value.trim();
+      const consent = document.getElementById('consentCheckbox').checked;
+      const alertDiv = document.getElementById('enrollAlert');
+      const submitBtn = document.getElementById('enrollSubmitBtn');
+
+      if (selectedFiles.length < 2) {
+        alertDiv.className = 'alert alert-danger';
+        alertDiv.innerText = 'Please select at least 2 images.';
+        alertDiv.style.display = 'block';
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.innerText = '⏳ Extracting 512-D Embeddings...';
+      alertDiv.style.display = 'none';
+
+      const formData = new FormData();
+      formData.append('name', name);
+      formData.append('consent', consent);
+      selectedFiles.forEach(f => formData.append('images', f));
+
+      try {
+        const res = await fetch('/api/enroll', {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alertDiv.className = 'alert alert-success';
+          alertDiv.innerText = `✅ Successfully enrolled ${data.name} with ${data.images_enrolled} images!`;
+          alertDiv.style.display = 'block';
+          document.getElementById('enrollForm').reset();
+          selectedFiles = [];
+          renderPreviews();
+          init();
+        } else {
+          alertDiv.className = 'alert alert-danger';
+          alertDiv.innerText = `❌ Error: ${data.detail || 'Enrollment failed.'}`;
+          alertDiv.style.display = 'block';
+        }
+      } catch (err) {
+        alertDiv.className = 'alert alert-danger';
+        alertDiv.innerText = `❌ Network Error: ${err.message}`;
+        alertDiv.style.display = 'block';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = '✅ Enroll Person & Extract Embeddings';
+      }
+    }
+
+    // Run on startup
+    window.onload = init;
+  </script>
+</body>
+</html>

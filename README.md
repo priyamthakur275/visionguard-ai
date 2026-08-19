@@ -1,220 +1,237 @@
-﻿# VisionGuard AI — Smart Face Recognition and Robot Tracking System
+# VisionGuard AI — Smart Face Recognition & Robot Tracking System
 
-[![CI](https://github.com/Priyam-Thakur/visionguard-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/Priyam-Thakur/visionguard-ai/actions)
+[![CI](https://github.com/priyamthakur275/visionguard-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/priyamthakur275/visionguard-ai/actions)
 [![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11-blue.svg)](https://www.python.org/)
-[![Framework](https://img.shields.io/badge/GUI-CustomTkinter-blueviolet.svg)](https://github.com/TomSchimansky/CustomTkinter)
-[![Computer Vision](https://img.shields.io/badge/Model-InsightFace%20Buffalo__L-orange.svg)](https://github.com/deepinsight/insightface)
-[![Status](https://img.shields.io/badge/Project%20Status-Portfolio%20Prototype-green.svg)](#limitations)
+[![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20%7C%20ASGI-009688.svg)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/Frontend-React%2018%20%7C%20Vite-61DAFB.svg)](https://react.dev/)
+[![Model](https://img.shields.io/badge/Model-InsightFace%20Buffalo__L-orange.svg)](https://github.com/deepinsight/insightface)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-**VisionGuard AI** is a modular Python desktop application that integrates real-time face detection, deep face recognition, monocular distance estimation, and autonomous target-following robot simulation (with an optional serial microcontroller interface).
+**VisionGuard AI** is an advanced computer vision and autonomous robotics tracking system available as both a **native Python desktop application** and a **cloud-ready web demo**.
 
-Designed as an advanced computer vision portfolio project, it demonstrates clean desktop software engineering, multithreaded inference pipelines, responsible biometric data handling, and fail-safe physical control systems.
+It integrates deep facial feature extraction (**InsightFace ArcFace 512-D**), monocular pinhole distance estimation, centroid tracking with temporal majority-vote smoothing, and a fail-safe navigation policy engine for autonomous person following.
 
 ---
 
-## Table of Contents
+## Dual-Distribution Architecture
 
-1. [Key Features](#key-features)
-2. [System Architecture](#system-architecture)
-3. [Architecture Diagram](#architecture-diagram)
-4. [Application Workflow](#application-workflow)
-5. [Recognition Pipeline](#recognition-pipeline)
-6. [Robot Control Pipeline](#robot-control-pipeline)
-7. [Safety & Fail-Safe Design](#safety--fail-safe-design)
-8. [Technology Stack](#technology-stack)
-9. [Repository Structure](#repository-structure)
-10. [Installation & Setup](#installation--setup)
-11. [Running the Application](#running-the-application)
-12. [Enrollment Workflow](#enrollment-workflow)
-13. [Live Recognition Workflow](#live-recognition-workflow)
-14. [Robot Simulation Mode](#robot-simulation-mode)
-15. [Optional Hardware Mode](#optional-hardware-mode)
-16. [Microcontroller (Arduino/ESP32) Protocol](#microcontroller-arduinoesp32-protocol)
-17. [Configuration Reference](#configuration-reference)
-18. [Testing Suite](#testing-suite)
-19. [Continuous Integration (CI)](#continuous-integration-ci)
-20. [Troubleshooting](#troubleshooting)
-21. [Privacy, Data Governance & Ethics](#privacy-data-governance--ethics)
-22. [Honest Engineering Limitations](#honest-engineering-limitations)
-23. [Future Roadmap](#future-roadmap)
-24. [Attribution & Provenance](#attribution--provenance)
-25. [License](#license)
+VisionGuard AI is architected with a strict separation between core vision logic, native hardware desktop execution, and public cloud deployment:
+
+```text
+                               +-------------------------------------------------------------+
+                               |                 VisionGuard AI Core Engine                  |
+                               |  - app.core.face_utils (InsightFace Buffalo_L ONNX)         |
+                               |  - app.core.embedding_utils (L2 Normalization, Cosine Sim)  |
+                               |  - app.core.distance_utils (Pinhole Triangle Similarity)    |
+                               |  - app.core.tracking_utils (Centroid Tracker & Smoother)    |
+                               |  - app.core.robot_utils (Command Policy & Fail-Safes)       |
+                               |  - app.core.database_utils (Atomic Embeddings & Metadata)   |
+                               +-------------------------------------------------------------+
+                                              |                              |
+                   +--------------------------+                              +--------------------------+
+                   |                                                                                    |
+                   v                                                                                    v
++------------------------------------+                                                +------------------------------------+
+|    Native Desktop App (Python)     |                                                |      Web Demo Backend (FastAPI)    |
+| - CustomTkinter Dark UI            |                                                | - CORS & Input Validation          |
+| - Direct USB Webcam (OpenCV)       |                                                | - REST Endpoints:                  |
+| - Physical PySerial to Arduino     |                                                |   /health, /api/status,            |
+| - Local disk storage               |                                                |   /api/recognize, /api/enroll,     |
+| - Packaged via PyInstaller (.exe)  |                                                |   /api/persons                     |
++------------------------------------+                                                | - Low-Latency WebSocket (/ws/live) |
+                                                                                      +------------------------------------+
+                                                                                                        |
+                                                                                                        v
+                                                                                      +------------------------------------+
+                                                                                      |     React + Vite Web Frontend      |
+                                                                                      | - Modern Dark AI Dashboard         |
+                                                                                      | - Browser Webcam & Image Upload    |
+                                                                                      | - Live Overlay (BBoxes, Distances) |
+                                                                                      | - 2D Canvas Robot Telemetry Sim    |
+                                                                                      | - Target Selector & Emergency Stop |
+                                                                                      | - System Status & Architecture     |
+                                                                                      | - Deployable to Vercel             |
+                                                                                      +------------------------------------+
+```
+
+---
+
+## Cloud vs. Local Hardware Boundary
+
+| Dimension | Native Desktop Application | Cloud / Browser Web Demo |
+| :--- | :--- | :--- |
+| **Primary Use Case** | Local workstations & physical robot control | Public web portfolio demo & remote verification |
+| **Video Input** | Direct OS USB webcam via OpenCV (`VideoCapture`) | Client-side browser webcam (`navigator.mediaDevices`) or image upload |
+| **Robot Movement** | Physical UART serial to Arduino / ESP32 (`COM3`) | Interactive 2D HTML5 Canvas real-time vector simulation |
+| **Inference Location** | Local Host CPU/GPU | Cloud Server CPU/GPU |
+| **Data Persistence** | Local atomic files (`data/database/`, `data/images/`) | Isolated persistent storage directory / ephemeral RAM |
+| **Packaging / Hosting** | Windows Standalone Executable (`.exe`) | Backend on **Render**, Frontend on **Vercel**, or **Docker** |
 
 ---
 
 ## Key Features
 
-- **Decoupled Asynchronous Inference**: UI redrawing runs independently on the main event loop while InsightFace deep inference runs on a dedicated, single-slot latest-frame worker thread, preventing frame backpressure and UI freezing.
-- **Robust Multi-Image Enrollment**: Enrolls identities with 2–20 uncompressed face images. Generates 512-D ArcFace feature vectors without lossy embedding averaging, maintaining granular sample galleries.
-- **Secure Identity Storage**: Decouples human display names from filesystem paths using deterministic UUIDs (`data/images/<uuid>/`), preventing directory traversal and name-collision bugs.
-- **Monocular Distance Estimation**: Calculates geometric target distance using pinhole camera triangle similarity principles calibrated to standard facial biometrics.
-- **Temporal Label Smoothing**: Centroid-based bounding-box tracker paired with a rolling majority-vote filter eliminates single-frame recognition flickering.
-- **Deterministic Target Following**: Robot mode strictly follows an explicitly selected, recognized person. Unknown or non-selected faces are strictly locked out from commanding movement.
-- **Fail-Safe Safety Engine**: Proactive `STOP` dispatch on camera stream failure, recognition loss, serial interruption, window close, or explicit user Emergency Stop.
-- **Integrated Hardware Simulation**: Full simulation mode allows complete algorithmic validation without requiring connected Arduino or motor hardware.
+- **Asynchronous Inference Pipeline**: Dedicated background worker runs neural network operations asynchronously, eliminating UI freeze and frame backpressure.
+- **ArcFace 512-D Biometric Embeddings**: Extracts high-dimensional normalized feature vectors without lossy average pooling, maintaining multi-sample galleries per identity.
+- **Monocular Pinhole Distance Estimation**: Calculates geometric target distance in real-time ($d = \frac{W_{\text{known}} \cdot f_{\text{px}}}{w_{\text{px}}}$) based on calibrated facial proportions.
+- **Spatial Centroid Tracking & Label Smoothing**: Nearest-neighbor Euclidean tracker coupled with a rolling window majority-vote filter eliminates single-frame detection flickering.
+- **Deterministic Autonomous Following**: Robot navigation policy commands `LEFT`, `RIGHT`, `FORWARD`, `BACKWARD`, and `STOP` based on horizontal center offset ($\pm 60\,\text{px}$) and range bands ($50\text{–}100\,\text{cm}$).
+- **Seven Fail-Safe Invariants**: Strict safety interlocks ensuring unknown identities never command movement, target disappearance halts immediately, and serial watchdog halts motors after $750\,\text{ms}$.
 
 ---
 
-## System Architecture
-
-VisionGuard AI follows a layered modular architecture with strict separation of concerns:
-
-- **Presentation Layer (`app/ui/`)**: Built on CustomTkinter. Houses the dashboard, enrollment forms, live camera viewports, robot control panels, and configuration settings.
-- **Worker & Stream Layer (`app/core/`)**:
-  - `CameraStream`: Threaded OpenCV video capture with frame-drop prevention and consecutive failure counters.
-  - `LatestFrameRecognitionWorker`: Bounded queue worker that pulls frames and executes inference asynchronously.
-- **Inference Layer (`app/core/face_utils.py`, `embedding_utils.py`, `recognition_utils.py`)**:
-  - **InsightFace Buffalo_L**: Pretrained RetinaFace face detector and ArcFace feature extractor.
-  - **Cosine Metric Matcher**: Vectorized similarity comparison against stacked gallery embeddings.
-- **State & Tracking Layer (`app/core/tracking_utils.py`)**:
-  - Centroid nearest-neighbor tracking across frame sequences.
-  - `LabelSmoother` rolling window to filter transient detection noise.
-- **Safety & Control Layer (`app/core/robot_utils.py`)**:
-  - Policy engine mapping horizontal pixel offset and distance bands to discrete commands (`LEFT`, `RIGHT`, `FORWARD`, `BACKWARD`, `STOP`).
-  - Serial transport manager with command deduplication, fail-safe disconnect, and optional bidirectional ACK verification.
-- **Persistence Layer (`app/core/database_utils.py`, `file_utils.py`)**:
-  - Atomic dual-file storage: Joblib-serialized NumPy embedding arrays (`embeddings.pkl`) and human-readable metadata (`metadata.json`).
-
----
-
-## Architecture Diagram
+## System Architecture Pipeline
 
 ```text
-                  +-----------------------------------+
-                  |        Webcam Video Stream        |
-                  +-----------------------------------+
-                                    |
-                                    v
-                  +-----------------------------------+
-                  |    Threaded CameraStream (OpenCV) |
-                  +-----------------------------------+
-                                    |
-            +-----------------------+-----------------------+
-            | (Raw Frame)                                   | (Raw Frame)
-            v                                               v
-+-----------------------+                       +-----------------------+
-|  CustomTkinter UI     |                       | Latest-Frame Worker   |
-|  (Smooth Redraw Loop) |                       | (Asynchronous Queue)  |
-+-----------------------+                       +-----------------------+
-            ^                                               |
-            |                                               v
-            |                                   +-----------------------+
-            |                                   |  InsightFace Buffalo_L|
-            |                                   |  - RetinaFace Detect  |
-            |                                   |  - 5-Point Alignment  |
-            |                                   |  - 512-D Embedding    |
-            |                                   +-----------------------+
-            |                                               |
-            |                                               v
-            |                                   +-----------------------+
-            |                                   | Recognition Engine    |
-            |                                   | - Cosine Similarity   |
-            |                                   | - Threshold Matching  |
-            |                                   | - Label Smoother      |
-            |                                   +-----------------------+
-            |                                               |
-            +-----------------------------------------------+
-            | (Annotated Frame, Tracked BBoxes, Identities)
-            v
-+-----------------------------------------------------------------------+
-|                         Target Selector                               |
-| (Only Follows Explicitly Selected, Confirmed Known Identity)          |
-+-----------------------------------------------------------------------+
-                                    |
-                                    v
-+-----------------------------------------------------------------------+
-|                    Distance & Geometry Estimator                      |
-|       d = (known_width_cm * focal_length_px) / face_pixel_width       |
-+-----------------------------------------------------------------------+
-                                    |
-                                    v
-+-----------------------------------------------------------------------+
-|                        Safety Controller                              |
-|       - Dead-Zone Alignment (LEFT / RIGHT)                            |
-|       - Range Regulation (FORWARD / BACKWARD / STOP)                  |
-|       - Fail-Safe Invariants (Target Loss / Unsafe State -> STOP)     |
-+-----------------------------------------------------------------------+
-                                    |
-                     +--------------+--------------+
-                     |                             |
-                     v                             v
-       +---------------------------+ +---------------------------+
-       |   Simulated Robot Panel   | |  Microcontroller Serial   |
-       |  (Zero Hardware Required) | |  (Arduino / ESP32 + ACK)  |
-       +---------------------------+ +---------------------------+
+[ Camera Frame / Upload ]
+          │
+          ▼
+[ RetinaFace Face Detection ] ──► Extracts Bounding Box (x1,y1,x2,y2) & 5 Landmarks
+          │
+          ▼
+[ ArcFace 512-D Embedding ] ───► L2 Normalization onto Unit Hypersphere (||v|| = 1.0)
+          │
+          ▼
+[ Cosine Similarity Matcher ] ─► Vectorized dot-product against enrolled gallery (θ = 0.45)
+          │
+          ▼
+[ Centroid Tracker & Smoother] ─► Spatial track association + temporal majority voting
+          │
+          ▼
+[ Geometric Distance Estimator] ─► d = (14.0cm * 615px) / face_pixel_width
+          │
+          ▼
+[ Safety & Command Controller ] ──► Dead-zone alignment (±60px) & Range regulation (50-100cm)
+          │
+          ├───────────────────────────────┐
+          ▼                               ▼
+[ Physical Arduino Microcontroller ]   [ 2D Interactive Web Canvas ]
+  (Line-delimited UART + 750ms Watchdog)  (Real-time Heading & Tracking Ray)
 ```
 
 ---
 
-## Application Workflow
+## Safety & Fail-Safe Invariants
 
-1. **Initialization**: `main.py` loads and validates `config.yaml`, initializes rotating logging to `data/logs/visionguard.log`, and launches `MainWindow`.
-2. **Dashboard Overview**: Displays real-time database counts, camera readiness, robot controller status, and an append-only event log.
-3. **Enrollment**: Administrator enters a person’s name, reviews the biometric consent disclaimer, and uploads 2–20 clear face photos. The system detects single faces, extracts 512-D ArcFace embeddings, creates a dedicated UUID folder, and saves metadata.
-4. **Live Recognition**: Starts camera stream and inference worker. Annotates faces with identity labels, similarity percentages, and real-time estimated distance.
-5. **Robot Mode**: Prompts the user to select an enrolled target identity. Evaluates target position and emits movement commands to the simulation UI or over serial.
-
----
-
-## Recognition Pipeline
-
-1. **Face Detection**: Input BGR frame is processed by RetinaFace to generate bounding boxes $(x_1, y_1, x_2, y_2)$ and confidence scores ($c \ge 0.5$).
-2. **Alignment & Landmark Extraction**: Five facial landmarks (eyes, nose, mouth corners) are detected to align the face crop.
-3. **Feature Extraction**: ArcFace backbone produces a 512-dimensional floating-point feature representation vector $v$.
-4. **L2 Normalization**: Embedding vectors are projected onto the unit hypersphere:
-   $$\hat{v} = \frac{v}{\|v\|_2}$$
-5. **Gallery Matching**: Query vector is matched against all enrolled embeddings via batch dot product:
-   $$\text{sim}(\hat{q}, \hat{g}_i) = \hat{q} \cdot \hat{g}_i$$
-   If $\max(\text{sim}) \ge \theta_{\text{thresh}}$ (default $0.45$), the face is classified as the corresponding identity; otherwise, it is marked **Unknown**.
-6. **Temporal Stabilization**: A rolling majority-vote filter smooths classifications over consecutive frames to avoid flicker.
-
----
-
-## Robot Control Pipeline
-
-Movement decisions prioritize horizontal alignment first, followed by range regulation:
-
-```text
-                    Target Bounding Box Center (X)
-                                  |
-            +---------------------+---------------------+
-            |                                           |
-    |X - Center| > 60px                         |X - Center| <= 60px
-            |                                           |
-     [Turn Command]                         [Distance Regulation]
-   X < Center -> LEFT                        Distance > 100cm -> FORWARD
-   X > Center -> RIGHT                       Distance < 50cm  -> BACKWARD
-                                             50cm-100cm       -> STOP (Hold)
-```
-
----
-
-## Safety & Fail-Safe Design
-
-Physical robot movement can present real-world risks. VisionGuard AI enforces seven strict safety invariants:
-
-| # | Invariant / Condition | Behavior |
+| # | Fail-Safe Mechanism | Behavior |
 | :--- | :--- | :--- |
-| **1** | **Unknown Identity Detected** | **Never commands movement.** Unknown faces cannot command the robot under any circumstances. |
-| **2** | **Target Disappearance** | If the selected target identity leaves the camera frame, the controller immediately dispatches `STOP`. |
-| **3** | **Emergency Stop Button** | Prominent red Emergency Stop button instantly dispatches `STOP` and terminates the active session. |
-| **4** | **Camera Stream Failure** | If 10 consecutive frame capture attempts fail, the stream halts and dispatches `STOP`. |
-| **5** | **Inference Worker Crash** | Any unhandled background exception in the inference thread halts the robot and triggers an alert. |
-| **6** | **Serial Disconnect / Shutdown** | Controller unconditionally writes `STOP\n` to the serial line prior to closing the port or exiting. |
-| **7** | **Watchdog Command Timeout** | The microcontroller firmware halts motors automatically if no valid command is received within $750\,\text{ms}$. |
+| **1** | **Unknown Identity Lockout** | Unknown faces are **strictly prohibited** from issuing movement commands under all conditions. |
+| **2** | **Target Loss Safe Halt** | If the designated target identity leaves the field of view, the controller dispatches `STOP` immediately. |
+| **3** | **Emergency Stop Override** | Dedicated software and hardware Emergency Stop overrides all movement commands unconditionally. |
+| **4** | **Camera Stream Monitor** | Halts navigation and stream if 10 consecutive capture attempts fail or hardware is unplugged. |
+| **5** | **Worker Exception Isolation** | Any inference crash safely dispatches `STOP` and displays a non-fatal recovery dialog. |
+| **6** | **Disconnect Safe Shutdown** | Transmits `STOP\n` over serial prior to closing the port or terminating the process. |
+| **7** | **750ms Microcontroller Watchdog** | Arduino firmware automatically cuts motor power if no valid command arrives within $750\,\text{ms}$. |
 
 ---
 
-## Technology Stack
+## Quick Start & Local Running
 
-- **Core Language**: Python 3.10 / 3.11
-- **Graphical Interface**: CustomTkinter 5.2.2 (Modern dark-themed Tkinter framework)
-- **Computer Vision & Image I/O**: OpenCV (`opencv-python`), Pillow
-- **Deep Learning Inference**: InsightFace (Buffalo_L model pack), ONNX Runtime
-- **Scientific Computing**: NumPy, Scipy, Scikit-Learn
-- **Serial Communications**: PySerial
-- **Serialization & Config**: PyYAML, Joblib, JSON
-- **Testing & Quality Assurance**: Pytest, Pytest-Cov
+### Prerequisites
+- Python 3.10 or 3.11
+- Node.js 18+ & npm (for frontend development)
+- USB Webcam (for native desktop mode or browser live streaming)
+
+---
+
+### 1. Run the Native Desktop Application (CustomTkinter)
+```bash
+# Activate virtual environment
+.venv\Scripts\activate   # Windows
+# source .venv/bin/activate # macOS/Linux
+
+# Run application
+python main.py
+```
+
+---
+
+### 2. Run the Full-Stack Web Demo Locally
+
+#### Terminal 1 — Start FastAPI Backend:
+```bash
+uvicorn app.web.server:app --host 0.0.0.0 --port 8000 --reload
+```
+
+#### Terminal 2 — Start React + Vite Frontend:
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open **`http://localhost:5173`** in your browser.
+
+---
+
+### 3. Run with Docker
+```bash
+docker-compose up --build
+```
+Open **`http://localhost:8000`** in your browser.
+
+---
+
+### 4. Build Standalone Windows Executable (.exe)
+```bash
+python scripts/build_windows.py
+```
+Packaged output will be generated in `dist/VisionGuardAI/`.
+
+---
+
+## REST & WebSocket API Reference
+
+The FastAPI backend exposes the following production endpoints:
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/health` or `/api/health` | Service health status, model loaded state, total identities. |
+| `GET` | `/api/status` or `/api/stats` | Detailed telemetry (embeddings count, threshold, distance bands). |
+| `GET` | `/api/persons` | List registered identities with metadata (UUID, photo count, dates). |
+| `POST` | `/api/enroll` | Multipart form (`name`, `consent`, `images[]`) to enroll a new identity. |
+| `POST` | `/api/recognize` | Single-frame JSON request (`image_base64`, `target_name`) returning bounding boxes and robot decisions. |
+| `DELETE`| `/api/persons/{name}` | Deletes person metadata, embeddings, and image directory. |
+| `WS` | `/ws/live` | Sub-50ms bidirectional live video stream pipeline. |
+
+---
+
+## Automated Test Suite
+
+VisionGuard AI features a deterministic test suite (41 tests) that executes without physical hardware or model downloads:
+
+```bash
+# Run all tests
+python -m pytest -v
+
+# Run with test coverage
+python -m pytest --cov=app tests/
+```
+
+### Test Coverage Highlights
+- **Config & Invariants**: 99%
+- **Distance & Embedding Math**: 100%
+- **Centroid Tracking & Smoothing**: 96%
+- **Database & UUID File Storage**: 86%
+- **Web REST & WebSocket APIs**: 100%
+
+---
+
+## Cloud Deployment Guide
+
+### Deploying Backend to Render
+1. Create a **Web Service** on [Render.com](https://render.com).
+2. Connect your GitHub repository `https://github.com/priyamthakur275/visionguard-ai`.
+3. Set **Runtime** to `Python 3` (or use `render.yaml`).
+4. **Build Command**: `pip install -r requirements-dev.txt`
+5. **Start Command**: `uvicorn app.web.server:app --host 0.0.0.0 --port $PORT`
+6. **Health Check Path**: `/health`
+
+### Deploying Frontend to Vercel
+1. Import the repository on [Vercel](https://vercel.com).
+2. Set **Root Directory** to `frontend`.
+3. **Framework Preset**: `Vite`.
+4. **Environment Variables**: Set `VITE_API_URL` to your Render backend URL (e.g. `https://visionguard-api.onrender.com`).
+5. Deploy.
 
 ---
 
@@ -224,13 +241,11 @@ Physical robot movement can present real-world risks. VisionGuard AI enforces se
 visionguard-ai/
 ├── .github/
 │   └── workflows/
-│       └── ci.yml                 # Automated multi-OS GitHub Actions workflow
+│       └── ci.yml                 # Automated multi-OS GitHub Actions CI
 ├── app/
-│   ├── __init__.py
 │   ├── config.py                  # Strongly-typed dataclass configuration
 │   ├── logger.py                  # Rotating file logging configuration
 │   ├── core/
-│   │   ├── __init__.py
 │   │   ├── camera_utils.py        # Threaded camera stream with failure detection
 │   │   ├── database_utils.py      # Face gallery persistence & metadata sync
 │   │   ├── distance_utils.py      # Monocular distance estimation & zone classification
@@ -242,308 +257,59 @@ visionguard-ai/
 │   │   ├── recognition_worker.py  # Asynchronous latest-frame inference worker
 │   │   ├── robot_utils.py         # Robot command decision logic & serial controller
 │   │   └── tracking_utils.py      # Centroid tracker with grace-period aging
-│   └── ui/
-│       ├── __init__.py
-│       ├── context.py             # Shared AppContext singleton holder
-│       ├── main_window.py         # Top-level window, router & safe exit handling
-│       ├── sidebar.py             # Navigation sidebar component
-│       ├── theme.py               # Centralized dark-mode visual design tokens
-│       ├── pages/
-│       │   ├── __init__.py
-│       │   ├── dashboard.py       # Metrics overview & activity log
-│       │   ├── enroll_person.py   # Identity enrollment & consent verification
-│       │   ├── live_recognition.py# Live webcam recognition viewport
-│       │   ├── registered_persons.py # Searchable identity manager (View/Update/Delete)
-│       │   ├── robot_mode.py      # Person-following robot control & simulation
-│       │   └── settings.py        # Live parameter configuration form
-│       └── widgets/
-│           ├── __init__.py
-│           ├── dialogs.py         # Progress, confirmation & conflict modal dialogs
-│           ├── distance_indicator.py # Circular color-coded distance indicator
-│           └── info_card.py       # Interactive dashboard summary metric card
-├── data/                          # Local data directory (biometrics git-ignored)
-│   ├── database/                  # embeddings.pkl, metadata.json (.gitkeep)
-│   ├── images/                    # UUID image galleries (.gitkeep)
-│   ├── logs/                      # visionguard.log (.gitkeep)
-│   └── models/                    # InsightFace Buffalo_L ONNX weights (.gitkeep)
+│   ├── ui/
+│   │   ├── main_window.py         # Top-level window & navigation router
+│   │   ├── pages/                 # Dashboard, Enroll, Live, Persons, Robot, Settings
+│   │   └── widgets/               # Dialogs, distance indicator, info cards
+│   └── web/
+│       ├── server.py              # FastAPI backend API & WebSocket streamer
+│       └── static/                # Static fallback assets
+├── frontend/                      # React 18 + Vite Web Application
+│   ├── src/
+│   │   ├── components/            # Hero, LiveDemo, RobotSimulator, Architecture, Safety
+│   │   ├── App.jsx                # Main single-page application layout
+│   │   └── index.css              # Dark AI engineering design system
+│   ├── package.json
+│   ├── vite.config.js
+│   └── vercel.json                # Vercel SPA routing configuration
 ├── firmware/
 │   └── visionguard_robot/
-│       └── visionguard_robot.ino  # Reference Arduino firmware with watchdog & ACK
+│       └── visionguard_robot.ino  # Reference Arduino firmware with 750ms watchdog
+├── scripts/
+│   └── build_windows.py           # Standalone Windows packaging script
 ├── tests/
-│   └── test_core.py               # Comprehensive pytest test suite (34 unit tests)
-├── .gitignore                     # Strict privacy & cache exclusions
-├── config.yaml                    # Single source of truth configuration file
-├── main.py                        # Application entry point
-├── README.md                      # Project documentation
-├── requirements.txt               # Production runtime dependencies
-└── requirements-dev.txt           # Test & development dependencies
+│   ├── test_core.py               # Core desktop unit tests (34 tests)
+│   └── test_web.py                # Web backend integration tests (7 tests)
+├── Dockerfile                     # Multi-stage Linux container
+├── docker-compose.yml             # Local orchestration
+├── render.yaml                    # Render.com deployment manifest
+├── visionguard.spec               # PyInstaller specification
+└── config.yaml                    # Central application configuration
 ```
-
----
-
-## Installation & Setup
-
-### Prerequisites
-- Operating System: Windows 10/11, macOS, or Linux
-- Python: Version 3.10 or 3.11 installed
-- Standard USB Webcam
-
-### Setup Instructions
-
-1. **Clone the Repository**:
-   ```bash
-   git clone https://github.com/Priyam-Thakur/visionguard-ai.git
-   cd visionguard-ai
-   ```
-
-2. **Create and Activate a Virtual Environment**:
-   - **Windows (PowerShell)**:
-     ```powershell
-     python -m venv .venv
-     .venv\Scripts\Activate.ps1
-     ```
-   - **macOS / Linux**:
-     ```bash
-     python3 -m venv .venv
-     source .venv/bin/activate
-     ```
-
-3. **Install Dependencies**:
-   ```bash
-   pip install --upgrade pip
-   pip install -r requirements.txt
-   ```
-
-*(Note: On initial execution of face recognition, InsightFace will automatically download the pretrained `buffalo_l` ONNX model pack to `data/models/`.)*
-
----
-
-## Running the Application
-
-Launch the desktop interface:
-```bash
-python main.py
-```
-
----
-
-## Enrollment Workflow
-
-1. Navigate to **Enroll Person** in the left sidebar.
-2. Enter the person's full display name (e.g., `Priyam Thakur`).
-3. Review and check the **biometric consent confirmation checkbox**.
-4. Click **📁 Upload Images** and select between 2 and 20 clear JPEG/PNG images of the person.
-5. Click **✅ Enroll Person**.
-   - Each image is evaluated to ensure it contains **exactly one** face.
-   - The face crop is aligned, normalized, and converted into a 512-D vector.
-   - The images are copied to `data/images/<uuid>/` and the database is updated atomically.
-
----
-
-## Live Recognition Workflow
-
-1. Navigate to **Live Recognition**.
-2. Click **▶ Start Camera**.
-3. View the live video feed:
-   - Green bounding boxes indicate confirmed recognized identities with confidence score.
-   - Red bounding boxes indicate **Unknown** persons.
-   - The on-screen HUD displays camera FPS, inference FPS, and monocular distance.
-4. Click **■ Stop Camera** to release the video capture device cleanly.
-
----
-
-## Robot Simulation Mode
-
-By default, `robot.simulate_hardware: true` is enabled in `config.yaml`.
-
-1. Navigate to **Robot Mode**.
-2. Select an enrolled target from the dropdown menu (e.g., `Priyam Thakur`).
-3. Click **▶ Start Robot Mode**.
-4. The live viewport highlights the target in amber, computes the center-offset and distance, and displays real-time commands:
-   - `⬅️ LEFT` / `➡️ RIGHT` when the target moves off-center.
-   - `⬆️ FORWARD` when the target is farther than $100\,\text{cm}$.
-   - `⬇️ BACKWARD` when the target approaches closer than $50\,\text{cm}$.
-   - `⏹️ STOP` when centered within the ideal range ($50\text{–}100\,\text{cm}$).
-5. Test the **EMERGENCY STOP** button to verify immediate movement cancellation.
-
----
-
-## Optional Hardware Mode
-
-To connect to a physical robot over serial:
-
-1. Connect your microcontroller (Arduino Uno/Nano, ESP32, STM32) via USB.
-2. Identify the serial COM port (e.g., `COM3` on Windows, `/dev/ttyUSB0` on Linux).
-3. In **Settings**, disable *Simulate Hardware*, set the port and baud rate ($9600$), and click **💾 Save Settings**.
-4. Flash the reference sketch from `firmware/visionguard_robot/visionguard_robot.ino`.
-
----
-
-## Microcontroller (Arduino/ESP32) Protocol
-
-VisionGuard AI communicates over standard UART serial using line-delimited ASCII strings terminated by `\n`:
-
-```text
-Host (VisionGuard AI)                 Microcontroller (Arduino/ESP32)
-         |                                           |
-         | -------- FORWARD\n ---------------------> | [Executes Forward Drive]
-         | <------- ACK FORWARD\n [Optional] ------- | [Resets Watchdog Timer]
-         |                                           |
-         | -------- STOP\n ------------------------> | [Halts All Motors]
-         | <------- ACK STOP\n [Optional] ---------- |
-         |                                           |
-         | [Host Disconnect / Inactive]              |
-         | (No command for > 750ms)                  | [Watchdog Timer Expires]
-         |                                           | [Auto-Executes STOP]
-```
-
----
-
-## Configuration Reference
-
-All application parameters are consolidated in `config.yaml`:
-
-```yaml
-app:
-  name: VisionGuard AI
-  version: 1.0.0
-  window_width: 1200
-  window_height: 750
-  theme: dark
-
-paths:
-  database_dir: data/database
-  embeddings_file: data/database/embeddings.pkl
-  metadata_file: data/database/metadata.json
-  images_dir: data/images
-  models_dir: data/models
-  logs_dir: data/logs
-
-face_analysis:
-  model_name: buffalo_l
-  providers: [CPUExecutionProvider]
-  detection_size: [640, 640]
-  min_face_confidence: 0.5
-
-enrollment:
-  min_images: 2
-  recommended_images: 8
-  max_images: 20
-
-recognition:
-  similarity_threshold: 0.45
-  recognition_smoothing_window: 5
-  unknown_label: Unknown
-
-distance:
-  known_face_width_cm: 14.0
-  focal_length_px: 615.0
-  too_close_max_cm: 50
-  ideal_min_cm: 50
-  ideal_max_cm: 100
-  too_far_max_cm: 150
-
-camera:
-  device_index: 0
-  frame_width: 960
-  frame_height: 540
-  target_fps: 30
-
-robot:
-  simulate_hardware: true
-  serial_port: COM3
-  baud_rate: 9600
-  center_dead_zone_px: 60
-  forward_distance_cm: 100
-  backward_distance_cm: 50
-  command_timeout_ms: 750
-  require_ack: false
-  ack_timeout_ms: 250
-
-logging:
-  level: INFO
-  max_bytes: 1048576
-  backup_count: 5
-  log_filename: visionguard.log
-```
-
----
-
-## Testing Suite
-
-VisionGuard AI features a deterministic test suite that executes completely without webcams, physical robots, or downloaded models.
-
-Run unit tests:
-```bash
-pytest -v
-```
-
-Run test suite with code coverage:
-```bash
-pytest --cov=app tests/
-```
-
-Verify syntax and compilation:
-```bash
-python -m compileall app main.py tests
-```
-
----
-
-## Continuous Integration (CI)
-
-A GitHub Actions workflow (`.github/workflows/ci.yml`) runs automatically on every push and pull request against the `main` branch. It executes:
-- Matrix builds across **Python 3.10 and 3.11** on both **Ubuntu** and **Windows**.
-- Dependency resolution from `requirements-dev.txt`.
-- Headless compilation validation.
-- The 34-case automated Pytest suite.
-
----
-
-## Troubleshooting
-
-| Issue | Cause | Solution |
-| :--- | :--- | :--- |
-| **Model Load Error** | Initial InsightFace model download interrupted or missing ONNX Runtime. | Ensure an active internet connection on the first run; verify `onnxruntime` is installed. |
-| **Camera Unavailable** | Webcam index incorrect or locked by another application (Zoom, Teams, Browser). | Close competing camera apps. Test changing `camera.device_index` to `1` or `2` in Settings. |
-| **Serial Connection Failed** | Selected COM port is invalid or robot is not connected. | Keep `simulate_hardware: true` enabled unless real hardware is connected and verified. |
-| **Recognition False Negatives** | Lighting variation or similarity threshold too strict. | Ensure enrollment photos have diverse angles and lighting; adjust threshold in Settings. |
 
 ---
 
 ## Privacy, Data Governance & Ethics
 
-- **Strictly Local Processing**: All face detections, embeddings, and image galleries are processed and stored strictly on the local machine. No images or biometric vectors are transmitted over any network.
-- **Informed Consent**: The enrollment UI requires an explicit acknowledgment that biometric consent was obtained before storing identity data.
-- **Complete Deletion Right**: Deleting a person from the *Registered Persons* page permanently removes their stored embeddings from `embeddings.pkl`, metadata from `metadata.json`, and deletes their image directory from disk.
-- **Git Hygiene**: Strict `.gitignore` rules prevent accidental commits of real biometric images (`data/images/*`), embedding databases (`data/database/*`), or runtime logs containing personal information.
+- **Zero Unconsented Storage**: During live demo streaming, frames are processed strictly in server RAM and immediately discarded.
+- **Informed Consent**: Enrollment requires explicit confirmation that biometric consent was obtained.
+- **Permanent Deletion**: Deleting an identity from the gallery permanently purges all stored embeddings and image folders.
+- **Git Hygiene**: Strict `.gitignore` rules prevent accidental commits of real biometric images (`data/images/*`), database vectors (`data/database/*`), or runtime logs.
 
 ---
 
 ## Honest Engineering Limitations
 
-In alignment with responsible engineering and academic integrity:
-
-1. **Biometric Security**: This project is a prototype demonstration. It does **not** include active infrared liveness detection or 3D structured-light anti-spoofing; it can be fooled by high-resolution photographs or video playback.
-2. **Monocular Distance**: Distance is mathematically estimated from 2D pixel widths assuming a standard adult facial width of $14\,\text{cm}$. It is sensitive to head tilt, facial expression, and focal distortion, and must **never** be used as a primary collision-avoidance sensor on heavy physical robots.
-3. **No Fabricated Benchmarks**: Actual inference FPS varies based on host CPU/GPU hardware. No false accuracy claims (e.g., "99.9% real-world accuracy") are made.
-
----
-
-## Future Roadmap
-
-- [ ] Liveness detection module (blink and micro-motion texture analysis).
-- [ ] Multi-camera feed support.
-- [ ] TensorRT and DirectML ONNX execution provider acceleration.
-- [ ] ROS2 (Robot Operating System) node integration for autonomous mobile bases.
-- [ ] Interactive focal length calibration wizard tool.
+1. **Biometric Security Prototype**: This application does not include active infrared 3D structured-light anti-spoofing; high-resolution photos can fool 2D face recognition.
+2. **Monocular Geometry**: Distance estimation assumes standard adult facial dimensions ($14\,\text{cm}$). Head tilt and facial orientation affect pixel width readings.
+3. **Zero Fabricated Claims**: Accuracy numbers and inference FPS reflect actual hardware benchmarks on host hardware without inflated statistics.
 
 ---
 
 ## Attribution & Provenance
 
-- **Maintained & Modernized by**: **Priyam Thakur**
-- **Original Upstream Base**: Public computer vision foundation authored by **PRERANA P JOIS**. Modernized, refactored, hardened, and expanded with asynchronous threading, safety controllers, fail-safes, testing, and modern UI architecture.
+- **Created, maintained, modernized, hardened, and extended by Priyam Thakur**
+- VisionGuard AI is a smart face-recognition and robot-tracking system featuring asynchronous processing, safety controls, fail-safe mechanisms, automated testing, and a modern UI architecture.
 
 ---
 
