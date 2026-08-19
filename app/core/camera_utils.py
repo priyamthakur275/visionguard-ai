@@ -1,4 +1,4 @@
-"""
+﻿"""
 camera_utils.py
 ================
 Threaded webcam capture wrapper. Reading frames on a background thread
@@ -16,7 +16,6 @@ import threading
 import time
 from typing import Optional, Tuple
 
-import cv2
 import numpy as np
 
 from app.config import AppConfig
@@ -24,18 +23,24 @@ from app.logger import get_logger
 
 logger = get_logger(__name__)
 
+try:
+    import cv2
+except ImportError:  # pragma: no cover - optional at import time
+    cv2 = None
+
 
 class CameraStream:
     """Background-threaded VideoCapture wrapper with FPS tracking."""
 
     def __init__(self, config: AppConfig):
         self._config = config
-        self._capture: Optional[cv2.VideoCapture] = None
+        self._capture: Optional[object] = None
         self._thread: Optional[threading.Thread] = None
         self._running = False
         self._lock = threading.Lock()
         self._latest_frame: Optional[np.ndarray] = None
         self._frame_ready = False
+        self._consecutive_failures = 0
 
         self._fps = 0.0
         self._frame_count = 0
@@ -45,6 +50,10 @@ class CameraStream:
         """Attempt to open the configured camera device and begin
         capturing frames on a background thread. Returns True on
         success, False if the camera could not be opened."""
+        if cv2 is None:
+            logger.error("OpenCV is not installed; cannot open camera.")
+            return False
+
         device_index = self._config.camera.device_index
         capture = cv2.VideoCapture(device_index)
         if not capture.isOpened():
@@ -67,8 +76,11 @@ class CameraStream:
         while self._running and self._capture is not None:
             ok, frame = self._capture.read()
             if not ok or frame is None:
+                self._consecutive_failures += 1
                 time.sleep(0.05)
                 continue
+
+            self._consecutive_failures = 0
 
             with self._lock:
                 self._latest_frame = frame
@@ -95,6 +107,11 @@ class CameraStream:
     @property
     def is_running(self) -> bool:
         return self._running
+
+    @property
+    def has_failed(self) -> bool:
+        """True only after a sustained capture failure, not normal startup latency."""
+        return self._consecutive_failures >= 10
 
     def stop(self) -> None:
         """Stop the capture thread and release the camera device."""

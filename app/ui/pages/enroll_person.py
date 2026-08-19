@@ -10,6 +10,7 @@ every accepted embedding individually (never averaged).
 from __future__ import annotations
 
 import threading
+import uuid
 from pathlib import Path
 from tkinter import filedialog
 from typing import List, Optional
@@ -40,6 +41,7 @@ class EnrollPersonPage(ctk.CTkFrame):
         self._context = context
         self._on_enrolled = on_enrolled
         self._selected_files: List[Path] = []
+        self._consent_var = ctk.BooleanVar(value=False)
 
         self._build_header()
         self._build_form()
@@ -99,6 +101,11 @@ class EnrollPersonPage(ctk.CTkFrame):
             card, fg_color=theme.BG_SECONDARY, height=180, corner_radius=8
         )
         self._thumbnails_frame.pack(fill="x", padx=theme.PAD_LARGE, pady=theme.PAD_MEDIUM)
+
+        ctk.CTkCheckBox(
+            card, text="I have consent to enroll and store this person's biometric data locally.",
+            variable=self._consent_var, font=theme.FONT_CARD_LABEL, text_color=theme.TEXT_SECONDARY,
+        ).pack(anchor="w", padx=theme.PAD_LARGE, pady=(0, theme.PAD_SMALL))
 
         self._enroll_button = ctk.CTkButton(
             card, text="✅  Enroll Person", width=200, height=42,
@@ -160,6 +167,12 @@ class EnrollPersonPage(ctk.CTkFrame):
         if not person_name:
             show_info_dialog(self, "Missing Name", "Please enter the person's name.", success=False)
             return
+        if not self._consent_var.get():
+            show_info_dialog(self, "Consent Required", "Confirm that you have consent before enrolling biometric data.", success=False)
+            return
+        if len(person_name) > 80 or not any(char.isalnum() for char in person_name):
+            show_info_dialog(self, "Invalid Name", "Use a meaningful name up to 80 characters.", success=False)
+            return
         if len(self._selected_files) < min_images:
             show_info_dialog(
                 self, "Not Enough Images",
@@ -197,6 +210,7 @@ class EnrollPersonPage(ctk.CTkFrame):
         database = self._context.database
 
         accepted_embeddings = []
+        identity_id = database.identity_id_for(person_name) or str(uuid.uuid4())
         representative_image_rel: Optional[str] = None
         accepted_count = 0
         rejected_count = 0
@@ -224,7 +238,7 @@ class EnrollPersonPage(ctk.CTkFrame):
             accepted_embeddings.append(normalized_embedding)
             accepted_count += 1
 
-            stored_path = copy_image_into_gallery(source_path, config.images_root, person_name)
+            stored_path = copy_image_into_gallery(source_path, config.images_root, identity_id)
             if representative_image_rel is None:
                 representative_image_rel = str(stored_path.relative_to(config.images_root))
 
@@ -237,6 +251,7 @@ class EnrollPersonPage(ctk.CTkFrame):
                 image_paths_added=accepted_count,
                 representative_image=representative_image_rel,
                 overwrite=overwrite,
+                identity_id=identity_id,
             )
 
         self.after(0, self._finish_enrollment, progress, person_name, accepted_count, rejected_count, rejection_details)
@@ -263,6 +278,7 @@ class EnrollPersonPage(ctk.CTkFrame):
         show_info_dialog(self, "Enrollment Complete", summary, success=True)
 
         self._name_entry.delete(0, "end")
+        self._consent_var.set(False)
         self._selected_files = []
         self._selection_label.configure(text="No images selected")
         for widget in self._thumbnails_frame.winfo_children():

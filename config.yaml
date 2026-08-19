@@ -1,5 +1,5 @@
 app:
-  name: Smart Human face recognition system
+  name: VisionGuard AI
   version: 1.0.0
   window_width: 1200
   window_height: 750
@@ -31,10 +31,10 @@ recognition:
 distance:
   known_face_width_cm: 14.0
   focal_length_px: 615.0
-  too_close_max_cm: 25
-  ideal_min_cm: 25
-  ideal_max_cm: 50
-  too_far_max_cm: 100
+  too_close_max_cm: 50
+  ideal_min_cm: 50
+  ideal_max_cm: 100
+  too_far_max_cm: 150
 camera:
   device_index: 0
   frame_width: 960
@@ -47,6 +47,9 @@ robot:
   center_dead_zone_px: 60
   forward_distance_cm: 100
   backward_distance_cm: 50
+  command_timeout_ms: 750
+  require_ack: false
+  ack_timeout_ms: 250
 logging:
   level: INFO
   max_bytes: 1048576

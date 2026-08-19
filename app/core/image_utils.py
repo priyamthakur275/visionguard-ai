@@ -1,4 +1,4 @@
-"""
+﻿"""
 image_utils.py
 ==============
 Low-level image I/O helpers built on OpenCV/NumPy/Pillow. Responsible
@@ -12,13 +12,17 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional, Tuple
 
-import cv2
 import numpy as np
 from PIL import Image
 
 from app.logger import get_logger
 
 logger = get_logger(__name__)
+
+try:
+    import cv2
+except ImportError:  # pragma: no cover - optional at import time
+    cv2 = None
 
 
 class ImageLoadError(Exception):
@@ -35,6 +39,8 @@ def load_image_bgr(path: Path) -> np.ndarray:
     """
     if not path.exists():
         raise ImageLoadError(f"Image file does not exist: {path}")
+    if cv2 is None:
+        raise ImageLoadError("OpenCV is not installed; cannot decode images.")
     try:
         raw_bytes = np.fromfile(str(path), dtype=np.uint8)
         image = cv2.imdecode(raw_bytes, cv2.IMREAD_COLOR)
@@ -48,6 +54,8 @@ def load_image_bgr(path: Path) -> np.ndarray:
 
 def bgr_to_rgb(image_bgr: np.ndarray) -> np.ndarray:
     """Convert a BGR OpenCV image to RGB."""
+    if cv2 is None:
+        return image_bgr[..., ::-1].copy()
     return cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
 
 
@@ -58,7 +66,12 @@ def resize_keep_aspect(image: np.ndarray, target_width: int) -> np.ndarray:
         return image
     scale = target_width / float(width)
     new_size = (target_width, max(1, int(height * scale)))
+    if cv2 is None:
+        pil = Image.fromarray(image)
+        resized = pil.resize(new_size, Image.BILINEAR)
+        return np.array(resized)
     return cv2.resize(image, new_size, interpolation=cv2.INTER_AREA)
+
 
 def bgr_to_pil(image_bgr: np.ndarray) -> Image.Image:
     """Convert an OpenCV BGR frame into a Pillow Image (RGB) for display

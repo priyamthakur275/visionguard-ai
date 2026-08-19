@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import numpy as np
+import threading
 
 from app.config import AppConfig
 from app.logger import get_logger
@@ -48,29 +49,42 @@ class FaceAnalysisEngine:
     def __init__(self, config: AppConfig):
         self._config = config
         self._analyzer = None  # type: Optional["insightface.app.FaceAnalysis"]
+        self._load_lock = threading.Lock()
 
     def _ensure_loaded(self) -> None:
-        if self._analyzer is not None:
-            return
-        try:
-            # Imported lazily so the rest of the app can start even if
-            # insightface/onnxruntime are still being installed/downloaded.
-            from insightface.app import FaceAnalysis
-        except ImportError as exc:
-            raise RuntimeError(
-                "InsightFace is not installed. Run: pip install insightface onnxruntime"
-            ) from exc
+        with self._load_lock:
+            if self._analyzer is not None:
+                return
+            try:
+                # Imported lazily so the rest of the app can start even if
+                # insightface/onnxruntime are still being installed/downloaded.
+                from insightface.app import FaceAnalysis
+            except ImportError as exc:
+                raise RuntimeError(
+                    "InsightFace is not installed. Run: pip install insightface onnxruntime"
+                ) from exc
 
-        logger.info("Loading InsightFace model pack '%s' ...", self._config.face_analysis.model_name)
-        analyzer = FaceAnalysis(
-            name=self._config.face_analysis.model_name,
-            root=str(self._config.models_root),
-            providers=self._config.face_analysis.providers,
-        )
-        det_w, det_h = self._config.face_analysis.detection_size
-        analyzer.prepare(ctx_id=0, det_size=(det_w, det_h))
-        self._analyzer = analyzer
-        logger.info("InsightFace model pack loaded successfully.")
+            logger.info("Loading InsightFace model pack '%s' ...", self._config.face_analysis.model_name)
+            try:
+                analyzer = FaceAnalysis(
+                    name=self._config.face_analysis.model_name,
+                    root=str(self._config.models_root),
+                    providers=self._config.face_analysis.providers,
+                )
+                det_w, det_h = self._config.face_analysis.detection_size
+                analyzer.prepare(ctx_id=0, det_size=(det_w, det_h))
+            except Exception as exc:  # model download / ONNX provider failures
+                logger.exception("InsightFace initialization failed")
+                raise RuntimeError(
+                    "Could not initialize the InsightFace model. Check internet access for the initial "
+                    "model download, ONNX Runtime compatibility, and the configured execution provider."
+                ) from exc
+            self._analyzer = analyzer
+            logger.info("InsightFace model pack loaded successfully.")
+
+    def ensure_loaded(self) -> None:
+        """Eagerly validate the model before a camera session begins."""
+        self._ensure_loaded()
 
     def detect_faces(self, image_bgr: np.ndarray) -> List[DetectedFace]:
         """Run detection + alignment + embedding extraction on a BGR

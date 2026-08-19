@@ -164,7 +164,7 @@ class RegisteredPersonsPage(ctk.CTkFrame):
         gallery.pack(padx=20, pady=10, fill="both", expand=True)
 
         from app.core.file_utils import list_person_images
-        image_paths = list_person_images(config.images_root, person.name)
+        image_paths = list_person_images(config.images_root, person.identity_id)
 
         row_frame = None
         for idx, path in enumerate(image_paths):
@@ -185,6 +185,11 @@ class RegisteredPersonsPage(ctk.CTkFrame):
     def _update_person(self, person: PersonMetadata) -> None:
         """Allow the user to append additional images to an existing
         identity using the same detect -> embed -> normalize pipeline."""
+        maximum = self._context.config.enrollment.max_images
+        remaining = maximum - person.image_count
+        if remaining <= 0:
+            show_info_dialog(self, "Image Limit Reached", f"{person.name} already has {person.image_count}/{maximum} images.", success=False)
+            return
         paths = filedialog.askopenfilenames(
             title=f"Add More Images for {person.name}",
             filetypes=[("Image Files", "*.jpg *.jpeg *.png *.bmp *.webp")],
@@ -195,6 +200,9 @@ class RegisteredPersonsPage(ctk.CTkFrame):
         candidate_paths = [p for p in paths if is_supported_image(Path(p))]
         if not candidate_paths:
             show_info_dialog(self, "No Valid Images", "None of the selected files are supported image types.", success=False)
+            return
+        if len(candidate_paths) > remaining:
+            show_info_dialog(self, "Image Limit", f"Only {remaining} additional image(s) can be added.", success=False)
             return
 
         progress = ProgressDialog(self, title=f"Updating {person.name}")
@@ -231,7 +239,7 @@ class RegisteredPersonsPage(ctk.CTkFrame):
 
             accepted_embeddings.append(l2_normalize(face.embedding))
             accepted += 1
-            copy_image_into_gallery(source_path, config.images_root, person.name)
+            copy_image_into_gallery(source_path, config.images_root, person.identity_id)
 
         if accepted > 0:
             database.add_embeddings(
@@ -257,7 +265,7 @@ class RegisteredPersonsPage(ctk.CTkFrame):
     def _delete_person(self, person: PersonMetadata) -> None:
         def do_delete():
             self._context.database.delete_person(person.name)
-            delete_person_directory(self._context.config.images_root, person.name)
+            delete_person_directory(self._context.config.images_root, person.identity_id)
             self.refresh()
             if self._on_change:
                 self._on_change()

@@ -1,4 +1,4 @@
-"""
+﻿"""
 live_recognition.py
 ====================
 Live webcam recognition page. Pipeline per frame:
@@ -22,6 +22,7 @@ from app.core.camera_utils import CameraStream
 from app.core.distance_utils import bbox_pixel_width, classify_distance, estimate_distance_cm
 from app.core.image_utils import bgr_to_pil
 from app.core.recognition_utils import RecognitionEngine
+from app.core.recognition_worker import LatestFrameRecognitionWorker
 from app.core.tracking_utils import CentroidTracker
 from app.logger import get_logger
 from app.ui import theme
@@ -43,6 +44,7 @@ class LiveRecognitionPage(ctk.CTkFrame):
 
         self._camera: CameraStream | None = None
         self._recognition_engine: RecognitionEngine | None = None
+        self._recognition_worker: LatestFrameRecognitionWorker | None = None
         self._tracker = CentroidTracker(smoothing_window=context.config.recognition.recognition_smoothing_window)
         self._is_running = False
         self._update_job = None
@@ -104,27 +106,23 @@ class LiveRecognitionPage(ctk.CTkFrame):
         if self._is_running:
             return
 
-        self._camera = CameraStream(self._context.config)
-        if not self._camera.start():
-            show_info_dialog(
-                self, "Camera Unavailable",
-                "Could not open the configured camera device. Check the Camera Index in Settings "
-                "and make sure no other application is using the webcam.",
-                success=False,
-            )
-            self._camera = None
-            return
-
         try:
+            self._context.face_engine.ensure_loaded()
             self._recognition_engine = RecognitionEngine(
                 self._context.config, self._context.face_engine, self._context.database
             )
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to initialize recognition engine: %s", exc)
             show_info_dialog(self, "Model Load Error", f"Could not load the recognition model:\n{exc}", success=False)
-            self._camera.stop()
+            return
+
+        self._camera = CameraStream(self._context.config)
+        if not self._camera.start():
+            show_info_dialog(self, "Camera Unavailable", "Could not open the configured camera device. Check Settings and close other camera apps.", success=False)
             self._camera = None
             return
+        self._recognition_worker = LatestFrameRecognitionWorker(self._recognition_engine)
+        self._recognition_worker.start()
 
         self._is_running = True
         self._start_button.configure(state="disabled")
@@ -142,6 +140,9 @@ class LiveRecognitionPage(ctk.CTkFrame):
         if self._camera is not None:
             self._camera.stop()
             self._camera = None
+        if self._recognition_worker is not None:
+            self._recognition_worker.stop()
+            self._recognition_worker = None
         self._video_label.configure(image=None, text="Camera is off. Click 'Start Camera' to begin.")
         self._distance_indicator.clear()
         self._fps_label.configure(text="FPS: --")
@@ -157,18 +158,31 @@ class LiveRecognitionPage(ctk.CTkFrame):
             return
 
         ok, frame = self._camera.read()
-        if ok and frame is not None:
-            annotated = self._process_and_annotate(frame)
-            self._render_frame(annotated)
-            self._fps_label.configure(text=f"FPS: {self._camera.fps:.1f}")
+        if not ok or frame is None:
+            if self._camera.has_failed:
+                self.stop()
+                show_info_dialog(self, "Camera Unavailable", "Camera stream disconnected or failed.", success=False)
+                return
+            self._update_job = self.after(15, self._update_frame)
+            return
+
+        if self._recognition_worker is not None:
+            self._recognition_worker.submit(frame)
+            work = self._recognition_worker.latest_result()
+            if work is not None:
+                if work.error is not None:
+                    self.stop()
+                    show_info_dialog(self, "Recognition Error", str(work.error), success=False)
+                    return
+                annotated = self._process_and_annotate(work.frame, work.results)
+                self._render_frame(annotated)
+                self._fps_label.configure(text=f"Camera: {self._camera.fps:.1f} | Inference: {work.inference_fps:.1f} FPS")
 
         self._time_label.configure(text=datetime.now().strftime("%H:%M:%S"))
         self._update_job = self.after(15, self._update_frame)
 
-    def _process_and_annotate(self, frame_bgr):
+    def _process_and_annotate(self, frame_bgr, results):
         config = self._context.config
-        results = self._recognition_engine.recognize_frame(frame_bgr)
-
         detections = [res.bbox for _, res in results]
         self._tracker.update(detections)
 

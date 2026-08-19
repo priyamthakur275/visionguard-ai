@@ -1,4 +1,4 @@
-"""
+﻿"""
 database_utils.py
 ==================
 Persistence layer for the face database. Two files are maintained in
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 import threading
+import uuid
 from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from pathlib import Path
@@ -34,8 +35,9 @@ logger = get_logger(__name__)
 @dataclass
 class PersonMetadata:
     name: str
-    enrollment_date: str
-    last_updated: str
+    identity_id: str = ""
+    enrollment_date: str = ""
+    last_updated: str = ""
     image_count: int = 0
     embedding_count: int = 0
     representative_image: Optional[str] = None  # relative path for thumbnails
@@ -51,7 +53,7 @@ class EnrollmentResult:
 
 
 class FaceDatabase:
-    """Thread-safe façade over the embeddings + metadata files."""
+    """Thread-safe facade over the embeddings + metadata files."""
 
     def __init__(self, config: AppConfig):
         self._config = config
@@ -82,9 +84,21 @@ class FaceDatabase:
                 try:
                     with open(metadata_path, "r", encoding="utf-8") as handle:
                         raw = json.load(handle)
-                    self._metadata = {
-                        name: PersonMetadata(**payload) for name, payload in raw.items()
+                    self._metadata = {}
+                    valid_keys = {
+                        "name", "identity_id", "enrollment_date", "last_updated",
+                        "image_count", "embedding_count", "representative_image"
                     }
+                    for name, payload in raw.items():
+                        filtered = {k: v for k, v in payload.items() if k in valid_keys}
+                        filtered.setdefault("name", name)
+                        filtered.setdefault("identity_id", str(uuid.uuid4()))
+                        filtered.setdefault("enrollment_date", datetime.now().isoformat(timespec="seconds"))
+                        filtered.setdefault("last_updated", filtered["enrollment_date"])
+                        filtered.setdefault("image_count", 0)
+                        filtered.setdefault("embedding_count", len(self._embeddings.get(name, [])))
+                        filtered.setdefault("representative_image", None)
+                        self._metadata[name] = PersonMetadata(**filtered)
                 except Exception as exc:  # noqa: BLE001
                     logger.error("Failed to load metadata database, starting fresh: %s", exc)
                     self._metadata = {}
@@ -163,6 +177,7 @@ class FaceDatabase:
         image_paths_added: int,
         representative_image: Optional[str],
         overwrite: bool,
+        identity_id: Optional[str] = None,
     ) -> None:
         """Add embeddings for a person. If overwrite=True, existing
         embeddings/metadata for that person are replaced entirely;
@@ -180,8 +195,14 @@ class FaceDatabase:
                 new_image_count = (existing.image_count if existing else 0) + image_paths_added
                 enrollment_date = existing.enrollment_date if existing else now
 
+            resolved_id = (
+                identity_id
+                or (self._metadata[person_name].identity_id if person_name in self._metadata else str(uuid.uuid4()))
+            )
+
             self._metadata[person_name] = PersonMetadata(
                 name=person_name,
+                identity_id=resolved_id,
                 enrollment_date=enrollment_date,
                 last_updated=now,
                 image_count=new_image_count,
@@ -201,6 +222,12 @@ class FaceDatabase:
             self._metadata.pop(person_name, None)
             self._persist()
             logger.info("Deleted person '%s' from database.", person_name)
+
+    def identity_id_for(self, person_name: str) -> Optional[str]:
+        """Return the opaque UUID used for the person's image directory."""
+        with self._lock:
+            metadata = self._metadata.get(person_name)
+            return metadata.identity_id if metadata else None
 
 
 _db_instance: Optional[FaceDatabase] = None

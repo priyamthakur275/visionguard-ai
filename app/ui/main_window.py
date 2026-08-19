@@ -32,7 +32,7 @@ class MainWindow(ctk.CTk):
         self._context = AppContext.create()
         cfg = self._context.config.app
 
-        self.title(f"{cfg.name} - Professional AI Human Recognition & Robot Tracking System")
+        self.title(f"{cfg.name} — Smart Face Recognition & Robot Tracking System")
         self.geometry(f"{cfg.window_width}x{cfg.window_height}")
         self.minsize(1024, 650)
 

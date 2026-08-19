@@ -20,7 +20,8 @@ from app.core.camera_utils import CameraStream
 from app.core.distance_utils import bbox_pixel_width, classify_distance, estimate_distance_cm
 from app.core.image_utils import bgr_to_pil
 from app.core.recognition_utils import RecognitionEngine
-from app.core.robot_utils import RobotCommand, decide_command
+from app.core.recognition_worker import LatestFrameRecognitionWorker
+from app.core.robot_utils import RobotCommand, decide_command, select_recognized_target
 from app.core.tracking_utils import CentroidTracker
 from app.logger import get_logger
 from app.ui import theme
@@ -51,9 +52,11 @@ class RobotModePage(ctk.CTkFrame):
 
         self._camera: CameraStream | None = None
         self._recognition_engine: RecognitionEngine | None = None
+        self._recognition_worker: LatestFrameRecognitionWorker | None = None
         self._tracker = CentroidTracker(smoothing_window=context.config.recognition.recognition_smoothing_window)
         self._is_running = False
         self._update_job = None
+        self._selected_target = ctk.StringVar(value="Select a recognized person")
 
         self._build_header()
         self._build_video_area()
@@ -98,6 +101,18 @@ class RobotModePage(ctk.CTkFrame):
         )
         self._stop_button.pack(side="left", padx=4)
 
+        self._emergency_button = ctk.CTkButton(
+            left, text="EMERGENCY STOP", width=165, height=38, fg_color="#8E1720", hover_color="#6F1017",
+            font=theme.FONT_BUTTON, command=self.emergency_stop,
+        )
+        self._emergency_button.pack(side="left", padx=4)
+
+        self._target_menu = ctk.CTkOptionMenu(
+            control_bar, values=["Select a recognized person"], variable=self._selected_target,
+            fg_color=theme.BG_SECONDARY, button_color=theme.ACCENT,
+        )
+        self._target_menu.pack(side="left", padx=theme.PAD_MEDIUM)
+
         self._mode_label = ctk.CTkLabel(
             control_bar,
             text="Mode: SIMULATED" if context_simulated(self._context) else "Mode: HARDWARE (Serial)",
@@ -131,21 +146,30 @@ class RobotModePage(ctk.CTkFrame):
         if self._is_running:
             return
 
-        self._camera = CameraStream(self._context.config)
-        if not self._camera.start():
-            show_info_dialog(self, "Camera Unavailable", "Could not open the configured camera device.", success=False)
-            self._camera = None
+        people = sorted(person.name for person in self._context.database.list_persons())
+        if not people:
+            show_info_dialog(self, "No Target Available", "Enroll a person before using Robot Mode.", success=False)
             return
+        self._target_menu.configure(values=people)
+        if self._selected_target.get() not in people:
+            self._selected_target.set(people[0])
 
         try:
+            self._context.face_engine.ensure_loaded()
             self._recognition_engine = RecognitionEngine(
                 self._context.config, self._context.face_engine, self._context.database
             )
         except Exception as exc:  # noqa: BLE001
             show_info_dialog(self, "Model Load Error", f"Could not load the recognition model:\n{exc}", success=False)
-            self._camera.stop()
+            return
+
+        self._camera = CameraStream(self._context.config)
+        if not self._camera.start():
+            show_info_dialog(self, "Camera Unavailable", "Could not open the configured camera device.", success=False)
             self._camera = None
             return
+        self._recognition_worker = LatestFrameRecognitionWorker(self._recognition_engine)
+        self._recognition_worker.start()
 
         if not self._context.robot_controller.connect():
             show_info_dialog(
@@ -174,6 +198,9 @@ class RobotModePage(ctk.CTkFrame):
         if self._camera is not None:
             self._camera.stop()
             self._camera = None
+        if self._recognition_worker is not None:
+            self._recognition_worker.stop()
+            self._recognition_worker = None
         self._context.robot_controller.disconnect()
         self._video_label.configure(image=None, text="Camera is off. Click 'Start Robot Mode' to begin.")
         self._distance_indicator.clear()
@@ -191,15 +218,27 @@ class RobotModePage(ctk.CTkFrame):
             return
 
         ok, frame = self._camera.read()
-        if ok and frame is not None:
-            annotated = self._process_frame(frame)
-            self._render_frame(annotated)
+        if not ok or frame is None:
+            if self._camera.has_failed:
+                self.emergency_stop("Camera input failed; robot stopped.")
+                return
+            self._update_job = self.after(15, self._update_frame)
+            return
+        if self._recognition_worker is not None:
+            self._recognition_worker.submit(frame)
+            work = self._recognition_worker.latest_result()
+            if work is not None:
+                if work.error is not None:
+                    self.emergency_stop("Recognition failed; robot stopped.")
+                    show_info_dialog(self, "Recognition Error", str(work.error), success=False)
+                    return
+                annotated = self._process_frame(work.frame, work.results)
+                self._render_frame(annotated)
 
         self._update_job = self.after(15, self._update_frame)
 
-    def _process_frame(self, frame_bgr):
+    def _process_frame(self, frame_bgr, results):
         config = self._context.config
-        results = self._recognition_engine.recognize_frame(frame_bgr)
         detections = [res.bbox for _, res in results]
         active_tracks = self._tracker.update(detections)
 
@@ -211,14 +250,16 @@ class RobotModePage(ctk.CTkFrame):
             label = result.name if not result.is_known else f"{result.name} ({result.similarity * 100:.0f}%)"
             cv2.putText(frame_bgr, label, (x1, max(0, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2, cv2.LINE_AA)
 
-        primary = self._tracker.largest_active_track()
-        if primary is None:
+        target_name = self._selected_target.get()
+        target_face = select_recognized_target(results, target_name)
+        if target_face is None:
             self._distance_indicator.clear()
-            self._update_command_display(RobotCommand.STOP, "No target detected.")
+            self._update_command_display(RobotCommand.STOP, f"Target '{target_name}' not visible.")
             self._context.robot_controller.send_command(RobotCommand.STOP)
             return frame_bgr
 
-        _, target_bbox = primary
+        # A known, explicitly selected identity is the only follow target.
+        target_bbox = target_face.bbox
         x1, y1, x2, y2 = target_bbox
         cv2.rectangle(frame_bgr, (x1, y1), (x2, y2), TARGET_COLOR_BGR, 3)
 
@@ -246,6 +287,13 @@ class RobotModePage(ctk.CTkFrame):
         }.get(command, theme.NEUTRAL)
         self._command_label.configure(text=f"{icon}  {command.value}", text_color=color)
         self._reason_label.configure(text=reason)
+
+    def emergency_stop(self, reason: str = "Emergency stop activated.") -> None:
+        """Immediately command STOP, then end the session and release hardware."""
+        self._context.robot_controller.send_command(RobotCommand.STOP)
+        self._update_command_display(RobotCommand.STOP, reason)
+        if self._is_running:
+            self.stop()
 
     def _render_frame(self, frame_bgr) -> None:
         pil_image = bgr_to_pil(frame_bgr)

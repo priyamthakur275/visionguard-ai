@@ -1,8 +1,7 @@
 """
 main.py
 =======
-VisionGuard AI - Professional AI-Based Human Recognition and Robot
-Tracking System.
+VisionGuard AI — Smart Face Recognition & Robot Tracking System.
 
 Entry point: initializes configuration/logging, then launches the
 CustomTkinter desktop application.

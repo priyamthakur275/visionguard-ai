@@ -39,10 +39,13 @@ def generate_unique_filename(original_name: str) -> str:
     return f"{uuid.uuid4().hex}{suffix}"
 
 
-def person_image_dir(images_root: Path, person_name: str) -> Path:
-    """Return (and create) the per-person image storage directory."""
-    safe_name = sanitize_person_name(person_name)
-    return ensure_dir(images_root / safe_name)
+def person_image_dir(images_root: Path, identity_id: str) -> Path:
+    """Return the per-identity directory. Display names never form paths."""
+    try:
+        safe_identity = str(uuid.UUID(identity_id))
+    except (ValueError, TypeError) as exc:
+        raise ValueError("identity_id must be a UUID") from exc
+    return ensure_dir(images_root / safe_identity)
 
 
 def sanitize_person_name(name: str) -> str:
@@ -51,27 +54,34 @@ def sanitize_person_name(name: str) -> str:
     return cleaned.strip().replace(" ", "_")
 
 
-def copy_image_into_gallery(source_path: Path, images_root: Path, person_name: str) -> Path:
+def copy_image_into_gallery(source_path: Path, images_root: Path, identity_id: str) -> Path:
     """Copy an externally-selected image into the person's managed
     gallery folder under a unique filename, returning the new path."""
-    destination_dir = person_image_dir(images_root, person_name)
+    destination_dir = person_image_dir(images_root, identity_id)
     destination_path = destination_dir / generate_unique_filename(source_path.name)
     shutil.copy2(source_path, destination_path)
     logger.info("Copied image '%s' -> '%s'", source_path, destination_path)
     return destination_path
 
 
-def delete_person_directory(images_root: Path, person_name: str) -> None:
+def delete_person_directory(images_root: Path, identity_id: str) -> None:
     """Remove a person's entire image folder (used on delete)."""
-    folder = images_root / sanitize_person_name(person_name)
+    try:
+        folder = images_root / str(uuid.UUID(identity_id))
+    except (ValueError, TypeError):
+        logger.error("Refusing to delete non-UUID identity directory")
+        return
     if folder.exists():
         shutil.rmtree(folder, ignore_errors=True)
-        logger.info("Deleted image directory for '%s'", person_name)
+        logger.info("Deleted image directory for identity '%s'", str(uuid.UUID(identity_id)))
 
 
-def list_person_images(images_root: Path, person_name: str) -> List[Path]:
+def list_person_images(images_root: Path, identity_id: str) -> List[Path]:
     """Return all supported image paths stored for a given person."""
-    folder = images_root / sanitize_person_name(person_name)
+    try:
+        folder = images_root / str(uuid.UUID(identity_id))
+    except (ValueError, TypeError):
+        return []
     if not folder.exists():
         return []
     return sorted(p for p in folder.iterdir() if is_supported_image(p))

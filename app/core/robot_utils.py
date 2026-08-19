@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Tuple
+from typing import Optional, Tuple, TypeVar
 
 from app.config import AppConfig
 from app.logger import get_logger
@@ -36,6 +36,25 @@ class RobotCommand(Enum):
 class RobotDecision:
     command: RobotCommand
     reason: str
+
+
+T = TypeVar("T")
+
+
+def select_recognized_target(candidates: list[tuple[T, object]], target_name: str) -> Optional[T]:
+    """Select one deterministic target from recognized UI results.
+
+    Each result must expose ``name``, ``is_known`` and ``bbox``.  The largest
+    matching face wins, making multi-face behavior predictable without ever
+    allowing an unknown identity to drive the robot.
+    """
+    matches = [
+        (face, result) for face, result in candidates
+        if getattr(result, "is_known", False) and getattr(result, "name", None) == target_name
+    ]
+    if not matches:
+        return None
+    return max(matches, key=lambda item: (item[1].bbox[2] - item[1].bbox[0]) * (item[1].bbox[3] - item[1].bbox[1]))[0]
 
 
 def decide_command(
@@ -116,7 +135,7 @@ class RobotController:
     def send_command(self, command: RobotCommand) -> None:
         """Dispatch a robot command. Avoids re-sending an identical
         command repeatedly to reduce serial/log noise."""
-        if command == self._last_command:
+        if command == self._last_command and command is not RobotCommand.STOP:
             return
         self._last_command = command
 
@@ -127,11 +146,32 @@ class RobotController:
         try:
             payload = f"{command.value}\n".encode("utf-8")
             self._serial_connection.write(payload)
+            self._serial_connection.flush()
+            if self._config.robot.require_ack:
+                acknowledgement = self._serial_connection.readline().decode("utf-8", errors="replace").strip()
+                expected = f"ACK {command.value}"
+                if acknowledgement != expected:
+                    raise RuntimeError(f"Expected '{expected}', received '{acknowledgement or 'nothing'}'")
             logger.info("Transmitted robot command over serial -> %s", command.value)
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to transmit serial command: %s", exc)
+            self._connected = False
+            # The port may have failed, so STOP cannot be guaranteed; make one
+            # best-effort write and ensure no caller treats the link as healthy.
+            if command is not RobotCommand.STOP and self._serial_connection is not None:
+                try:
+                    self._serial_connection.write(b"STOP\n")
+                    self._serial_connection.flush()
+                except Exception:  # noqa: BLE001
+                    logger.error("Best-effort STOP also failed; physical failsafe is required.")
 
     def disconnect(self) -> None:
+        # Never release the connection while a physical robot may still be moving.
+        # STOP is deliberately not de-duplicated in send_command().
+        try:
+            self.send_command(RobotCommand.STOP)
+        except Exception:  # noqa: BLE001
+            logger.exception("Unable to send STOP while disconnecting")
         if self._serial_connection is not None:
             try:
                 self._serial_connection.close()

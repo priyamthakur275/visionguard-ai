@@ -96,6 +96,9 @@ class RobotSection:
     center_dead_zone_px: int = 60
     forward_distance_cm: int = 100
     backward_distance_cm: int = 50
+    command_timeout_ms: int = 750
+    require_ack: bool = False
+    ack_timeout_ms: int = 250
 
 
 @dataclass
@@ -146,8 +149,22 @@ class AppConfig:
             logging=LoggingSection(**raw.get("logging", {})),
         )
         instance._source_path = cfg_path
+        instance.validate()
         instance.ensure_directories()
         return instance
+
+    def validate(self) -> None:
+        """Reject unsafe or contradictory configuration before hardware starts."""
+        if not 0.0 <= self.recognition.similarity_threshold <= 1.0:
+            raise ValueError("recognition.similarity_threshold must be between 0 and 1")
+        if not (0 < self.enrollment.min_images <= self.enrollment.recommended_images <= self.enrollment.max_images):
+            raise ValueError("enrollment image limits must be positive and ordered")
+        if not (0 <= self.distance.too_close_max_cm <= self.distance.ideal_min_cm <= self.distance.ideal_max_cm < self.distance.too_far_max_cm):
+            raise ValueError("distance thresholds are contradictory")
+        if not (self.robot.backward_distance_cm <= self.robot.forward_distance_cm):
+            raise ValueError("robot backward distance must not exceed forward distance")
+        if self.robot.command_timeout_ms <= 0 or self.robot.ack_timeout_ms <= 0:
+            raise ValueError("robot timeouts must be positive")
 
     # ------------------------------------------------------------------
     # Persistence
@@ -155,6 +172,7 @@ class AppConfig:
     def save(self) -> None:
         """Persist the current configuration back to disk, preserving the
         original file location. Used by the Settings page."""
+        self.validate()
         target = self._source_path or DEFAULT_CONFIG_PATH
         payload = {
             "app": asdict(self.app),

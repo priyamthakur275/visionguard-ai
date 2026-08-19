@@ -4,8 +4,6 @@ onnxruntime==1.19.2
 opencv-python==4.10.0.84
 numpy==1.26.4
 PyYAML==6.0.2
-scikit-learn==1.5.1
 joblib==1.4.2
 pyserial==3.5
-matplotlib>=3.9
 pillow==10.4.0
