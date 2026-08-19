@@ -35,13 +35,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Upgrade packaging tools and pre-install Cython + NumPy for C extension compilation
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Upgrade packaging tools and install Cython + NumPy directly into virtualenv
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel cython numpy==1.26.4
 
-# Install python dependencies into an isolated prefix
+# Install all requirements and web dependencies directly into virtualenv
 COPY requirements.txt requirements-dev.txt ./
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt && \
-    pip install --no-cache-dir --prefix=/install fastapi uvicorn websockets python-multipart httpx
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir fastapi uvicorn websockets python-multipart httpx
 
 # ======================================================================
 # Stage 3: Final minimal production runtime
@@ -51,6 +55,7 @@ FROM python:3.11-slim as runner
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive \
+    PATH="/opt/venv/bin:$PATH" \
     PORT=8000
 
 WORKDIR /app
@@ -63,8 +68,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy pre-compiled python packages from backend-builder stage
-COPY --from=backend-builder /install /usr/local
+# Copy the complete virtual environment from backend-builder
+COPY --from=backend-builder /opt/venv /opt/venv
 
 # Copy compiled static frontend from frontend-builder stage
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
