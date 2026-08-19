@@ -1,7 +1,20 @@
 # ======================================================================
-# Stage 1: Build stage with C/C++ compilation toolchain for InsightFace
+# Stage 1: Build React + Vite frontend
 # ======================================================================
-FROM python:3.11-slim as builder
+FROM node:20-slim as frontend-builder
+
+WORKDIR /app/frontend
+
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+
+COPY frontend/ ./
+RUN npm run build
+
+# ======================================================================
+# Stage 2: Build Python dependencies & compile C/Cython extensions
+# ======================================================================
+FROM python:3.11-slim as backend-builder
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -31,7 +44,7 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt && \
     pip install --no-cache-dir --prefix=/install fastapi uvicorn websockets python-multipart httpx
 
 # ======================================================================
-# Stage 2: Final minimal production runtime
+# Stage 3: Final minimal production runtime
 # ======================================================================
 FROM python:3.11-slim as runner
 
@@ -50,14 +63,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy pre-compiled python packages from builder stage
-COPY --from=builder /install /usr/local
+# Copy pre-compiled python packages from backend-builder stage
+COPY --from=backend-builder /install /usr/local
 
-# Copy application source, configuration, data directories, and frontend bundle
+# Copy compiled static frontend from frontend-builder stage
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+
+# Copy application source, configuration, and data directories
 COPY app/ ./app/
 COPY config.yaml ./config.yaml
 COPY data/ ./data/
-COPY frontend/dist/ ./frontend/dist/
 
 # Expose port (Render overrides this dynamically via $PORT)
 EXPOSE 8000
