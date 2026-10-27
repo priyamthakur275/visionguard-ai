@@ -43,9 +43,9 @@ export function embedFaces(indices) {
 /** Both steps for every face: used for photos. */
 export async function analyze(source, opts) {
   const det = await detectFaces(source, opts);
-  const { embeddings, embedMs } = await embedFaces(det.faces.map((_, i) => i));
+  const { embeddings, quality, embedMs } = await embedFaces(det.faces.map((_, i) => i));
   return {
-    faces: det.faces.map((f, i) => ({ ...f, embedding: embeddings[i] })),
+    faces: det.faces.map((f, i) => ({ ...f, embedding: embeddings[i], quality: quality[i] })),
     width: det.width,
     height: det.height,
     timings: { detectMs: det.detectMs, embedMs, totalMs: +(det.detectMs + embedMs).toFixed(1) },

@@ -53,6 +53,21 @@ face is only re-identified when its track is new or every 6 frames. In between,
 the tracker carries the faceprint forward. With six faces this took the demo
 from 3 fps to about 20 fps.
 
+## Enrolment quality, calibration and the face map
+
+- **Quality gate.** Every aligned crop is scored before it can be saved:
+  face width ≥ 80 px (at 960 px frame width), sharpness = variance of the
+  Laplacian ≥ 60 (sharp crops measured 120–420, a σ = 1.5 blur 15–42),
+  mean brightness 55–210, and head pose from the landmarks (yaw ratio ≤ 0.45,
+  roll ≤ 20°). Live enrolment collects 5 frames that pass, skipping
+  near-duplicates (cosine > 0.985), and shows what to fix.
+- **Distance calibration.** Sit 50 cm away and press *Calibrate distance*:
+  focal length = face width px × 50 ÷ 14, stored per browser.
+- **Face map.** PCA (Gram matrix + power iteration, in `core.js`) projects the
+  saved 512-D faceprints to 2D, with the live face as a moving ring and the
+  share of variance the picture keeps.
+- **Your data.** Export / import faceprints as JSON, or forget everyone.
+
 ## Safety and fail-safes
 
 | # | Fail-safe | Behaviour | Where |

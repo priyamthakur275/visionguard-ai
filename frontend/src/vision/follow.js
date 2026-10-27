@@ -96,6 +96,13 @@ export class CentroidTracker {
   }
 }
 
+const DEFAULT_FOCAL = CONFIG.focalLengthPx;
+
+/** Use a calibrated focal length (in reference-width pixels), or null to reset. */
+export function setFocalLength(px) {
+  CONFIG.focalLengthPx = px || DEFAULT_FOCAL;
+}
+
 /** Pinhole model: distance = real width × focal length / pixel width. */
 export function estimateDistanceCm(faceWidthPx, frameWidthPx = CONFIG.referenceWidthPx) {
   if (faceWidthPx <= 0) return -1;

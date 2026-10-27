@@ -171,3 +171,107 @@ export function matchIdentity(embedding, gallery, threshold) {
   const known = bestName !== null && best >= threshold;
   return { name: known ? bestName : "Unknown", isKnown: known, similarity: best, bestCandidate: bestName, scores };
 }
+
+// ---------------------------------------------------------------------------
+// Face quality (used to accept or reject enrolment samples)
+// ---------------------------------------------------------------------------
+
+/** Brightness (mean grey) and sharpness (variance of a 4-neighbour Laplacian)
+ *  of an aligned 112x112 RGBA crop. Calibrated on InsightFace crops: sharp
+ *  faces score ~120-420; a slight blur (sigma 1.5) drops them to ~15-40. */
+export function cropStats(rgba, size = 112) {
+  const g = new Float32Array(size * size);
+  let sum = 0;
+  for (let i = 0; i < size * size; i++) {
+    const v = 0.299 * rgba[i * 4] + 0.587 * rgba[i * 4 + 1] + 0.114 * rgba[i * 4 + 2];
+    g[i] = v;
+    sum += v;
+  }
+  let n = 0, mean = 0, m2 = 0;
+  for (let y = 1; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const i = y * size + x;
+      const lap = 4 * g[i] - g[i - 1] - g[i + 1] - g[i - size] - g[i + size];
+      n++;
+      const d = lap - mean;
+      mean += d / n;
+      m2 += d * (lap - mean);
+    }
+  }
+  return { brightness: sum / (size * size), sharpness: m2 / n };
+}
+
+/** Head turn from landmarks: nose offset from the eye midpoint, in units of
+ *  eye distance. ~0 = facing the camera; ±0.3 and beyond = clearly turned. */
+export function yawRatio(kps) {
+  const [le, re, nose] = kps;
+  const eyeDist = Math.hypot(re[0] - le[0], re[1] - le[1]) || 1;
+  return (nose[0] - (le[0] + re[0]) / 2) / eyeDist;
+}
+
+/** Head tilt in degrees from the line between the eyes. */
+export function rollDeg(kps) {
+  const [le, re] = kps;
+  return (Math.atan2(re[1] - le[1], re[0] - le[0]) * 180) / Math.PI;
+}
+
+export const QUALITY = { minFacePx: 80, minSharpness: 60, minBrightness: 55, maxBrightness: 210, maxYaw: 0.45, maxRoll: 20 };
+
+/** Checklist used before a face is remembered. Each item has a fix hint. */
+export function faceQuality(face, frameWidth) {
+  const widthPx = (face.bbox[2] - face.bbox[0]) * (960 / (frameWidth || 960));
+  const yaw = yawRatio(face.kps);
+  const roll = rollDeg(face.kps);
+  const q = face.quality || {};
+  const checks = [
+    { key: "size", label: "Close enough", ok: widthPx >= QUALITY.minFacePx, fix: "Move closer to the camera" },
+    { key: "sharp", label: "Sharp", ok: q.sharpness == null || q.sharpness >= QUALITY.minSharpness, fix: "Hold still: the face is blurry" },
+    { key: "light", label: "Well lit", ok: q.brightness == null || (q.brightness >= QUALITY.minBrightness && q.brightness <= QUALITY.maxBrightness), fix: q.brightness > QUALITY.maxBrightness ? "Too bright: move away from the light" : "Too dark: face a light or window" },
+    { key: "pose", label: "Facing camera", ok: Math.abs(yaw) <= QUALITY.maxYaw && Math.abs(roll) <= QUALITY.maxRoll, fix: Math.abs(roll) > QUALITY.maxRoll ? "Straighten your head" : "Turn a little towards the camera" },
+  ];
+  return { checks, ok: checks.every((c) => c.ok), yaw, roll, widthPx };
+}
+
+// ---------------------------------------------------------------------------
+// Face space: 2-D principal component view of faceprints
+// ---------------------------------------------------------------------------
+
+/**
+ * Top-2 principal components of `vectors` (n x d) via the n x n Gram matrix
+ * and power iteration (n is small: the enrolled samples). Returns the mean,
+ * two unit component vectors in d-space, and a project() for new vectors.
+ */
+export function pca2(vectors, iterations = 200) {
+  const n = vectors.length;
+  const d = vectors[0].length;
+  const mean = new Float32Array(d);
+  for (const v of vectors) for (let j = 0; j < d; j++) mean[j] += v[j] / n;
+  const X = vectors.map((v) => Float32Array.from(v, (x, j) => x - mean[j]));
+  const G = X.map((a) => X.map((b) => dot(a, b)));
+  const totalVariance = G.reduce((t, row, i) => t + row[i], 0) / n;
+  const comps = [];
+  for (let k = 0; k < 2; k++) {
+    let v = Array.from({ length: n }, (_, i) => 1 + ((i * 7919) % 13) / 13);
+    let lambda = 0;
+    for (let it = 0; it < iterations; it++) {
+      const w = G.map((row) => row.reduce((s, g, j) => s + g * v[j], 0));
+      lambda = Math.hypot(...w);
+      if (lambda < 1e-9) break;
+      v = w.map((x) => x / lambda);
+    }
+    // Back to d-space: pc = X^T v, normalised.
+    const pc = new Float32Array(d);
+    for (let i = 0; i < n; i++) for (let j = 0; j < d; j++) pc[j] += X[i][j] * v[i];
+    const norm = Math.hypot(...pc) || 1;
+    for (let j = 0; j < d; j++) pc[j] /= norm;
+    comps.push({ pc, lambda });
+    // Deflate the Gram matrix.
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) G[i][j] -= lambda * v[i] * v[j];
+  }
+  const project = (vec) => comps.map(({ pc }) => {
+    let s = 0;
+    for (let j = 0; j < d; j++) s += (vec[j] - mean[j]) * pc[j];
+    return s;
+  });
+  return { mean, components: comps.map((c) => c.pc), variances: comps.map((c) => c.lambda / n), totalVariance, project };
+}

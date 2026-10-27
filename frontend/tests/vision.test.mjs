@@ -121,3 +121,48 @@ test("target selection picks the largest matching face", () => {
   const big = face("Asha", [0, 0, 50, 50]);
   assert.equal(selectTarget([small, big, face("Ravi", [0, 0, 90, 90])], "Asha"), big);
 });
+
+import { cropStats, faceQuality, pca2, rollDeg, yawRatio } from "../src/vision/core.js";
+
+test("crop stats: flat image has zero sharpness, noise has a lot", () => {
+  const flat = new Uint8ClampedArray(112 * 112 * 4).fill(128);
+  const s = cropStats(flat);
+  close(s.brightness, 128, 1e-3);
+  close(s.sharpness, 0, 1e-6);
+  const noisy = flat.map((v, i) => (i % 4 === 3 ? 255 : ((i * 2654435761) >>> 24)));
+  assert.ok(cropStats(noisy).sharpness > 1000);
+});
+
+test("pose from landmarks", () => {
+  const frontal = [[40, 50], [72, 50], [56, 70], [44, 90], [68, 90]];
+  close(yawRatio(frontal), 0);
+  close(rollDeg(frontal), 0);
+  const turned = [[40, 50], [72, 50], [70, 70], [44, 90], [68, 90]];
+  assert.ok(yawRatio(turned) > 0.4);
+  const tilted = [[40, 50], [72, 70], [56, 75], [44, 90], [68, 95]];
+  assert.ok(rollDeg(tilted) > 30);
+});
+
+test("quality checklist flags small, blurry, dark and turned faces", () => {
+  const good = { bbox: [0, 0, 160, 200], kps: [[40, 50], [100, 50], [70, 80], [50, 120], [90, 120]], quality: { brightness: 130, sharpness: 200 } };
+  assert.ok(faceQuality(good, 960).ok);
+  const bad = { ...good, bbox: [0, 0, 40, 50], quality: { brightness: 20, sharpness: 10 } };
+  const q = faceQuality(bad, 960);
+  assert.equal(q.ok, false);
+  assert.deepEqual(q.checks.filter((c) => !c.ok).map((c) => c.key), ["size", "sharp", "light"]);
+});
+
+test("PCA separates two clusters along the first component", () => {
+  const rng = (s => () => (s = (s * 16807) % 2147483647) / 2147483647)(42);
+  const base = (k) => Float32Array.from({ length: 64 }, (_, j) => (j === k ? 1 : 0));
+  const noisy = (v) => l2normalize(Float32Array.from(v, (x) => x + (rng() - 0.5) * 0.1));
+  const a = Array.from({ length: 6 }, () => noisy(base(3)));
+  const b = Array.from({ length: 6 }, () => noisy(base(40)));
+  const { project, variances } = pca2([...a, ...b]);
+  const xa = a.map((v) => project(v)[0]);
+  const xb = b.map((v) => project(v)[0]);
+  assert.ok(Math.max(...xa) < Math.min(...xb) || Math.max(...xb) < Math.min(...xa));
+  assert.ok(variances[0] >= variances[1]);
+  const { totalVariance } = pca2([...a, ...b]);
+  assert.ok(variances[0] + variances[1] <= totalVariance + 1e-6 && variances[0] > 0.8 * totalVariance);
+});

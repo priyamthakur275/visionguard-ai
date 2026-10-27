@@ -1,10 +1,13 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { analyze, detectFaces, embedFaces, loadEngine } from "../vision/engine.js";
-import { matchIdentity } from "../vision/core.js";
-import { CONFIG, CentroidTracker, decide, distanceZone, estimateDistanceCm } from "../vision/follow.js";
+import { dot, faceQuality, matchIdentity } from "../vision/core.js";
+import { CONFIG, CentroidTracker, decide, distanceZone, estimateDistanceCm, setFocalLength } from "../vision/follow.js";
 
 const VisionContext = createContext(null);
 const STORE_KEY = "visionguard.gallery.v1";
+const FOCAL_KEY = "visionguard.focal.v1";
+const CALIBRATION_CM = 50;
+const MAX_ENROL_FRAMES = 240; // give up politely after ~10-15 s of unusable frames
 const SAMPLES_PER_ENROLL = 5;
 const REID_EVERY = 6; // live video: refresh each tracked face's faceprint every N frames
 
@@ -25,6 +28,15 @@ function saveGallery(g) {
   }
 }
 
+function loadFocal() {
+  try {
+    const v = Number(localStorage.getItem(FOCAL_KEY));
+    return v > 100 && v < 5000 ? v : null;
+  } catch {
+    return null;
+  }
+}
+
 export function VisionProvider({ children }) {
   const [engine, setEngine] = useState({ status: "loading", loadMs: null, error: null });
   const [mode, setMode] = useState("sample"); // sample | photo | camera
@@ -37,6 +49,8 @@ export function VisionProvider({ children }) {
   const [enrolling, setEnrolling] = useState(null); // { name, got }
   const [cameraError, setCameraError] = useState(null);
   const [fps, setFps] = useState(null);
+  const [focal, setFocal] = useState(loadFocal);
+  const [notice, setNotice] = useState(null);
 
   const mediaRef = useRef(null); // current <img> or <video>
   const streamRef = useRef(null);
@@ -53,6 +67,12 @@ export function VisionProvider({ children }) {
   }, []);
 
   useEffect(() => saveGallery(gallery), [gallery]);
+  useEffect(() => {
+    setFocalLength(focal);
+    try {
+      focal ? localStorage.setItem(FOCAL_KEY, String(focal)) : localStorage.removeItem(FOCAL_KEY);
+    } catch { /* ignore */ }
+  }, [focal]);
 
   /** Turn raw detections into named, tracked, ranged faces. */
   const interpret = useCallback((result, { live, ids: given }) => {
@@ -65,20 +85,37 @@ export function VisionProvider({ children }) {
       const label = live ? tracker.smooth(ids[i], m.name) : m.name;
       const isKnown = label !== "Unknown";
       const distanceCm = estimateDistanceCm(f.bbox[2] - f.bbox[0], result.width);
-      return { ...f, ...m, name: label, isKnown, trackId: ids[i], distanceCm, zone: distanceZone(distanceCm) };
+      const check = faceQuality(f, result.width);
+      return { ...f, ...m, name: label, isKnown, trackId: ids[i], distanceCm, zone: distanceZone(distanceCm), check };
     });
 
-    // Multi-frame enrolment: collect samples from the largest face.
+    // Multi-frame enrolment with a quality gate: follow the face that was named
+    // (by track id; the largest face if that track is lost), accept
+    // the frame only if every check passes and it isn't a near-copy of a
+    // sample we already have (so the stored samples cover small pose changes).
     const job = enrollRef.current;
-    if (job && faces.length) {
-      const biggest = faces.reduce((a, b) => (b.bbox[2] - b.bbox[0] > a.bbox[2] - a.bbox[0] ? b : a));
-      job.samples.push(biggest.embedding);
-      setEnrolling({ name: job.name, got: job.samples.length });
-      if (job.samples.length >= job.needed) {
+    if (job) {
+      job.frames++;
+      const biggest = faces.find((f) => f.trackId === job.trackId)
+        ?? (faces.length ? faces.reduce((a, b) => (b.bbox[2] - b.bbox[0] > a.bbox[2] - a.bbox[0] ? b : a)) : null);
+      if (biggest) job.trackId = biggest.trackId;
+      let fix = biggest ? null : "Step into view";
+      if (biggest) {
+        if (!biggest.check.ok) fix = biggest.check.checks.find((c) => !c.ok).fix;
+        else if (job.samples.some((s) => dot(s, biggest.embedding) > 0.985)) fix = "Turn your head slightly";
+        else job.samples.push(biggest.embedding);
+      }
+      const done = job.samples.length >= job.needed;
+      const gaveUp = !done && job.frames >= MAX_ENROL_FRAMES;
+      setEnrolling(done || gaveUp ? null : { name: job.name, got: job.samples.length, fix, trackId: job.trackId });
+      if (done || (gaveUp && job.samples.length >= 2)) {
         enrollRef.current = null;
-        setEnrolling(null);
         setGallery((prev) => ({ ...prev, [job.name]: [...(prev[job.name] || []), ...job.samples] }));
         setTarget((t) => t || job.name);
+        setNotice(done ? `Remembered ${job.name} from ${job.samples.length} good frames.` : `Saved ${job.name} from ${job.samples.length} good frames (lighting or distance made the rest unusable).`);
+      } else if (gaveUp) {
+        enrollRef.current = null;
+        setNotice(`Couldn't get clear frames of ${job.name}. ${fix || "Try better light, closer to the camera"}.`);
       }
     }
     return { ...result, faces };
@@ -92,13 +129,14 @@ export function VisionProvider({ children }) {
     setSelected(0);
   }, [interpret]);
 
-  // Re-label the current still when the gallery changes (e.g. after naming a face).
+  // Re-interpret the current still when the gallery or calibration changes
+  // (e.g. after naming a face), so labels and distances update immediately.
   useEffect(() => {
     if (mode !== "camera" && frame) {
-      setFrame((fr) => (fr ? interpret({ ...fr, faces: fr.faces.map(({ embedding, bbox, kps, score }) => ({ embedding, bbox, kps, score })) }, { live: false }) : fr));
+      setFrame((fr) => (fr ? interpret({ ...fr, faces: fr.faces.map(({ embedding, bbox, kps, score, quality }) => ({ embedding, bbox, kps, score, quality })) }, { live: false }) : fr));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gallery]);
+  }, [gallery, focal]);
 
   const stopCamera = useCallback(() => {
     loopRef.current++;
@@ -134,13 +172,13 @@ export function VisionProvider({ children }) {
             const t = tracker.tracks.get(id);
             if (!t.embedding || t.age >= REID_EVERY || enrollRef.current) need.push(i);
           });
-          const { embeddings, embedMs } = need.length ? await embedFaces(need) : { embeddings: [], embedMs: 0 };
+          const { embeddings, quality, embedMs } = need.length ? await embedFaces(need) : { embeddings: [], quality: [], embedMs: 0 };
           if (loopRef.current !== token) break;
-          need.forEach((i, k) => Object.assign(tracker.tracks.get(ids[i]), { embedding: embeddings[k], age: 0 }));
+          need.forEach((i, k) => Object.assign(tracker.tracks.get(ids[i]), { embedding: embeddings[k], quality: quality[k], age: 0 }));
           const faces = det.faces.map((f, i) => {
             const t = tracker.tracks.get(ids[i]);
             t.age = (t.age ?? 0) + 1;
-            return { ...f, embedding: t.embedding };
+            return { ...f, embedding: t.embedding, quality: t.quality };
           });
           const r = {
             faces, width: det.width, height: det.height,
@@ -176,15 +214,66 @@ export function VisionProvider({ children }) {
     const name = rawName.trim().slice(0, 32);
     if (!name || !frame) return;
     if (mode === "camera") {
-      enrollRef.current = { name, needed: SAMPLES_PER_ENROLL, samples: [] };
-      setEnrolling({ name, got: 0 });
+      const trackId = frame.faces[faceIndex]?.trackId;
+      enrollRef.current = { name, needed: SAMPLES_PER_ENROLL, samples: [], frames: 0, trackId };
+      setEnrolling({ name, got: 0, fix: null, trackId });
     } else {
       const f = frame.faces[faceIndex];
       if (!f) return;
       setGallery((prev) => ({ ...prev, [name]: [...(prev[name] || []), f.embedding] }));
       setTarget((t) => t || name);
+      setNotice(f.check?.ok ? `Remembered ${name}.` : `Remembered ${name}, but the photo isn't ideal, so recognition may be weaker. Tip: ${f.check.checks.filter((c) => !c.ok).map((c) => c.fix.toLowerCase()).join("; ")}.`);
     }
   }, [frame, mode]);
+
+  const cancelEnroll = useCallback(() => { enrollRef.current = null; setEnrolling(null); }, []);
+
+  /** Calibrate the pinhole model: the visitor sits ~50 cm away; we solve for
+   *  the focal length (in reference 960 px units) from their face width. */
+  const calibrate = useCallback(() => {
+    const faces = frame?.faces ?? [];
+    if (!faces.length) { setNotice("Calibration needs your face in view."); return; }
+    const f = faces.reduce((a, b) => (b.bbox[2] - b.bbox[0] > a.bbox[2] - a.bbox[0] ? b : a));
+    const widthRef = (f.bbox[2] - f.bbox[0]) * (CONFIG.referenceWidthPx / frame.width);
+    const value = Math.round((widthRef * CALIBRATION_CM) / CONFIG.knownFaceWidthCm);
+    setFocal(value);
+    setNotice(`Calibrated: your camera's focal length is about ${value} px (default 615). Distances now use it.`);
+  }, [frame]);
+
+  const exportData = useCallback(() => {
+    const payload = {
+      app: "VisionGuard", version: 1, model: "InsightFace buffalo_sc (w600k_mbf)", exportedAt: new Date().toISOString(),
+      note: "Faceprints only: 512 numbers per sample. No images.",
+      people: Object.fromEntries(Object.entries(gallery).map(([k, l]) => [k, l.map((e) => Array.from(e, (v) => +v.toFixed(5)))])),
+    };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(payload, null, 1)], { type: "application/json" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: "visionguard-faceprints.json" });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, [gallery]);
+
+  const importData = useCallback(async (file) => {
+    try {
+      const data = JSON.parse(await file.text());
+      const people = data.people || {};
+      const clean = {};
+      for (const [name, list] of Object.entries(people)) {
+        const vecs = (Array.isArray(list) ? list : []).filter((v) => Array.isArray(v) && v.length === 512 && v.every(Number.isFinite));
+        if (vecs.length) clean[String(name).slice(0, 32)] = vecs.map((v) => Float32Array.from(v));
+      }
+      if (!Object.keys(clean).length) throw new Error("no faceprints");
+      setGallery((prev) => {
+        const merged = { ...prev };
+        for (const [k, l] of Object.entries(clean)) merged[k] = [...(merged[k] || []), ...l];
+        return merged;
+      });
+      setNotice(`Imported ${Object.keys(clean).length} ${Object.keys(clean).length === 1 ? "person" : "people"}.`);
+    } catch {
+      setNotice("That file isn't a VisionGuard export.");
+    }
+  }, []);
+
+  const forgetAll = useCallback(() => { setGallery({}); setTarget(""); setNotice("Everyone was forgotten. Nothing is stored now."); }, []);
 
   const forget = useCallback((name) => {
     setGallery((prev) => { const n = { ...prev }; delete n[name]; return n; });
@@ -197,8 +286,9 @@ export function VisionProvider({ children }) {
   );
 
   const value = {
-    engine, mode, photoUrl, frame, gallery, target, estop, selected, enrolling, cameraError, fps, decision, mediaRef,
+    engine, mode, photoUrl, frame, gallery, target, estop, selected, enrolling, cameraError, fps, decision, mediaRef, focal, notice,
     setTarget, setEstop, setSelected, analyzeStill, startCamera, stopCamera, useSample, usePhoto, enrollFace, forget,
+    cancelEnroll, calibrate, resetCalibration: () => setFocal(null), exportData, importData, forgetAll, setNotice,
   };
   return <VisionContext.Provider value={value}>{children}</VisionContext.Provider>;
 }

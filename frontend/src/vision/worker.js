@@ -5,7 +5,7 @@
  * this device.
  */
 import * as ort from "onnxruntime-web/wasm";
-import { ARCFACE_TEMPLATE, decodeScrfd, estimateSimilarity, l2normalize, letterbox, nms, rescale } from "./core.js";
+import { ARCFACE_TEMPLATE, cropStats, decodeScrfd, estimateSimilarity, l2normalize, letterbox, nms, rescale } from "./core.js";
 
 let detector = null;
 let recognizer = null;
@@ -49,6 +49,7 @@ function alignBatch(bitmap, faces) {
   ctx.imageSmoothingEnabled = true;
   const plane = 112 * 112;
   const batch = new Float32Array(faces.length * 3 * plane);
+  const quality = [];
   faces.forEach((face, n) => {
     const [a, b, tx, ty] = estimateSimilarity(face.kps, ARCFACE_TEMPLATE);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -63,8 +64,9 @@ function alignBatch(bitmap, faces) {
       batch[off + plane + i] = (data[i * 4 + 1] - 127.5) / 127.5;
       batch[off + 2 * plane + i] = (data[i * 4 + 2] - 127.5) / 127.5;
     }
+    quality.push(cropStats(data)); // sharpness + brightness of the exact crop the network sees
   });
-  return new ort.Tensor("float32", batch, [faces.length, 3, 112, 112]);
+  return { tensor: new ort.Tensor("float32", batch, [faces.length, 3, 112, 112]), quality };
 }
 
 let lastBitmap = null;
@@ -86,12 +88,12 @@ async function detect(bitmap, detSize, maxFaces) {
 async function embed(indices) {
   const t0 = performance.now();
   const chosen = indices.map((i) => lastFaces[i]).filter(Boolean);
-  if (!chosen.length || !lastBitmap) return { embeddings: [], embedMs: 0 };
-  const batch = alignBatch(lastBitmap, chosen);
+  if (!chosen.length || !lastBitmap) return { embeddings: [], quality: [], embedMs: 0 };
+  const { tensor: batch, quality } = alignBatch(lastBitmap, chosen);
   const emb = await recognizer.run({ [recognizer.inputNames[0]]: batch });
   const raw = emb[recognizer.outputNames[0]].data;
   const embeddings = chosen.map((_, n) => l2normalize(raw.subarray(n * 512, (n + 1) * 512)));
-  return { embeddings, embedMs: +(performance.now() - t0).toFixed(1) };
+  return { embeddings, quality, embedMs: +(performance.now() - t0).toFixed(1) };
 }
 
 self.onmessage = async (e) => {

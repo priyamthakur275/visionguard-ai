@@ -1,4 +1,5 @@
-import { Cpu, Github, Lock, MonitorSmartphone, Trash2, Usb } from "lucide-react";
+import { useRef } from "react";
+import { Cpu, Download, Github, Lock, MonitorSmartphone, Trash2, Upload, Usb } from "lucide-react";
 import { useVision } from "../state/VisionContext.jsx";
 
 const REPO = "https://github.com/priyamthakur275/visionguard-ai";
@@ -12,6 +13,7 @@ export function TopBar() {
       </a>
       <nav aria-label="Sections">
         <a href="#robot">Robot</a>
+        <a href="#space">Face map</a>
         <a href="#how">How it works</a>
         <a href="#hardware">Hardware</a>
         <a href={REPO} target="_blank" rel="noreferrer" className="gh"><Github size={16} /> Code</a>
@@ -21,8 +23,9 @@ export function TopBar() {
 }
 
 export function People() {
-  const { gallery, forget } = useVision();
+  const { gallery, forget, exportData, importData, forgetAll } = useVision();
   const names = Object.keys(gallery);
+  const fileRef = useRef(null);
   return (
     <div className="people">
       <div className="people-head">
@@ -43,6 +46,12 @@ export function People() {
           ))}
         </ul>
       )}
+      <div className="people-actions">
+        <button className="link-btn" onClick={exportData} disabled={!names.length}><Download size={14} /> Export</button>
+        <button className="link-btn" onClick={() => fileRef.current.click()}><Upload size={14} /> Import</button>
+        {names.length > 0 && <button className="link-btn danger" onClick={forgetAll}><Trash2 size={14} /> Forget everyone</button>}
+        <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(e) => { if (e.target.files?.[0]) importData(e.target.files[0]); e.target.value = ""; }} />
+      </div>
     </div>
   );
 }

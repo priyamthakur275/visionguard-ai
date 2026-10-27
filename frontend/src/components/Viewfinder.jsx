@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Camera, ImageUp, ScanFace, Square } from "lucide-react";
+import { Camera, Check, ImageUp, Ruler, ScanFace, Square, X } from "lucide-react";
 import { useVision } from "../state/VisionContext.jsx";
 import { COLD, thermal } from "./thermal.js";
 import Faceprint from "./Faceprint.jsx";
@@ -67,6 +67,14 @@ function drawOverlay(canvas, frame, selected) {
   return hit;
 }
 
+function Notice({ text, onDone }) {
+  useEffect(() => {
+    const t = setTimeout(onDone, 7000);
+    return () => clearTimeout(t);
+  }, [text, onDone]);
+  return <p className="notice" role="status">{text}</p>;
+}
+
 export default function Viewfinder() {
   const v = useVision();
   const { frame, mode, selected, engine } = v;
@@ -102,7 +110,8 @@ export default function Viewfinder() {
     if (hit) v.setSelected(hit.i);
   };
 
-  const face = frame?.faces?.[selected] ?? frame?.faces?.[0];
+  const enrolTarget = v.enrolling?.trackId != null ? frame?.faces?.find((f) => f.trackId === v.enrolling.trackId) : null;
+  const face = enrolTarget ?? frame?.faces?.[selected] ?? frame?.faces?.[0];
   const submit = (e) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -143,10 +152,17 @@ export default function Viewfinder() {
         <button className="btn" onClick={() => fileRef.current.click()} disabled={engine.status !== "ready"}>
           <ImageUp size={16} /> Upload a photo
         </button>
+        {mode === "camera" && (
+          <button className="btn btn-quiet" onClick={v.calibrate} title="Sit about 50 cm (an arm's length) from the camera, then click">
+            <Ruler size={16} /> {v.focal ? "Recalibrate distance" : "Calibrate distance"}
+          </button>
+        )}
         {mode !== "sample" && <button className="btn btn-quiet" onClick={v.useSample}>Sample photo</button>}
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={(e) => e.target.files?.[0] && v.usePhoto(e.target.files[0])} />
       </div>
       {v.cameraError && <p className="vf-error">{v.cameraError}</p>}
+      {mode === "camera" && !v.focal && <p className="vf-hint">For accurate distance, sit about 50 cm away (an arm's length) and press Calibrate distance.</p>}
+      {v.notice && <Notice text={v.notice} onDone={() => v.setNotice(null)} />}
 
       <div className="readout">
         <dl className="stats">
@@ -167,8 +183,24 @@ export default function Viewfinder() {
                     ? `Closest: ${face.bestCandidate} at ${face.similarity.toFixed(2)}, below 0.45 · ${Math.round(face.distanceCm)} cm`
                     : `Nobody enrolled yet · ${Math.round(face.distanceCm)} cm`}
               </p>
+              {face.check && (
+                <ul className="checks" aria-label="Face quality">
+                  {face.check.checks.map((c) => (
+                    <li key={c.key} className={c.ok ? "ok" : "bad"} title={c.ok ? c.label : c.fix}>
+                      {c.ok ? <Check size={13} strokeWidth={3} /> : <X size={13} strokeWidth={3} />} {c.label}
+                    </li>
+                  ))}
+                </ul>
+              )}
               {v.enrolling ? (
-                <p className="face-sub hot">Learning {v.enrolling.name}: {v.enrolling.got} of 5 frames. Turn your head slightly.</p>
+                <div className="enrol">
+                  <div className="enrol-top">
+                    <span>Learning <b>{v.enrolling.name}</b>: {v.enrolling.got} of 5 good frames</span>
+                    <button className="link-btn" onClick={v.cancelEnroll}>Cancel</button>
+                  </div>
+                  <div className="enrol-bar"><span style={{ width: `${(v.enrolling.got / 5) * 100}%` }} /></div>
+                  <p className="face-sub hot">{v.enrolling.fix || "Good. Keep still, then turn your head a little."}</p>
+                </div>
               ) : (
                 <form className="name-form" onSubmit={submit}>
                   <input

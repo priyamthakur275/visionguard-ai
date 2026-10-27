@@ -3,6 +3,7 @@ import { VisionProvider } from "./state/VisionContext.jsx";
 import Viewfinder from "./components/Viewfinder.jsx";
 import RobotSection from "./components/RobotSection.jsx";
 import HowItWorks from "./components/HowItWorks.jsx";
+import FaceSpace from "./components/FaceSpace.jsx";
 import { Footer, Hardware, People, TopBar } from "./components/Sections.jsx";
 
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
           </div>
         </section>
         <RobotSection />
+        <FaceSpace />
         <HowItWorks />
         <Hardware />
       </main>

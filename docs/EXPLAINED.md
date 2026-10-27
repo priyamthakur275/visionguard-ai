@@ -33,7 +33,7 @@ video ever leaves your device and the site costs nothing to host."
 7. **Robot decision.** Turn left or right until the person is within ±60 px of
    centre, then move forward if they're over 100 cm away or back if under 50 cm.
 
-## Four things that make it stand out
+## Six things that make it stand out
 
 - **It runs in the browser.** onnxruntime-web runs the same InsightFace models
   in a Web Worker. The page stays smooth because inference is off the main thread.
@@ -43,6 +43,15 @@ video ever leaves your device and the site costs nothing to host."
 - **Safety first.** Unknown faces can't drive; losing the target stops the robot;
   the emergency stop overrides everything. On the real robot, the Arduino stops
   the motors if it hears nothing for 750 ms.
+- **It refuses bad photos.** Before saving a face it checks four things a
+  recruiter can see as green ticks: big enough, sharp (variance of the
+  Laplacian, a standard blur measure), well lit, and facing the camera (from
+  the landmarks). Blurry or tiny frames are skipped and it tells you what to
+  fix ("Move closer", "Hold still"). It also skips near-duplicate frames, so
+  the 5 saved faceprints cover slightly different angles.
+- **You can see the maths.** The face map squashes the 512 numbers down to 2
+  with principal component analysis, so you can literally see one person's
+  faceprints clumping together and your live face landing inside the clump.
 - **A real performance fix.** Re-identifying every face every frame ran at 3 fps
   with six people. Re-identifying each tracked face only every 6 frames (the
   tracker carries the name in between) brought it to about 20 fps.
@@ -51,12 +60,15 @@ video ever leaves your device and the site costs nothing to host."
 
 1. Open the site: the sample photo is analysed straight away (box, landmarks,
    faceprint, timings).
-2. Click **Use my camera**. Type your name and press **Remember**: it learns
-   from 5 frames.
+2. Click **Use my camera**. Type your name and press **Remember**: the ticks
+   show the quality checks, and the bar fills as it collects 5 good frames.
+   Sit an arm's length away and press **Calibrate distance**.
 3. Move left and right: the label follows you, and the distance updates.
 4. Scroll to **Robot**: choose yourself. It says LEFT / RIGHT / FORWARD.
    Cover your face or step away: "target lost", STOP. Press **Emergency stop**.
-5. Scroll to **How it works**: every number there is from your face, live.
+5. Scroll to **Face map**: your saved faceprints are a cluster, and the white
+   ring (you, live) sits inside it.
+6. Scroll to **How it works**: every number there is from your face, live.
 
 ## Questions you'll likely get
 
@@ -76,9 +88,23 @@ person close to 1.0 on the same photo; across real lighting changes the same
 person typically scores 0.5–0.8.
 
 **How accurate is the distance?**
-It's an estimate: it assumes an average face width and a typical webcam focal
-length, so expect roughly ±20%. That's enough for "too close / ideal / too
-far" bands, which is all the robot needs.
+It assumes an average face width (14 cm). Out of the box it also assumes a
+typical webcam focal length, so expect roughly ±20%. Pressing **Calibrate
+distance** while sitting 50 cm away measures your camera's real focal length
+(focal = face width in px × 50 ÷ 14), which removes most of that error.
+
+**How do you stop it learning from a blurry frame?**
+Each aligned 112×112 crop is scored for sharpness with the variance of the
+Laplacian: edges give big values, blur flattens them. I calibrated the cut-off
+(60) on real crops: sharp faces scored 120–420, slightly blurred ones 15–40.
+Brightness, face size and head pose (from the eye and nose landmarks) are
+checked too.
+
+**What is the face map actually showing?**
+PCA finds the two directions in which the saved faceprints vary most and
+projects every faceprint onto them. It's for intuition only: matching still
+uses all 512 numbers, and the page shows how much of the variation the 2D
+picture keeps.
 
 **What happens with several people?**
 Each face gets a track. The robot follows the largest face whose name matches
@@ -86,8 +112,8 @@ the chosen target; everyone else is ignored, and unknown people can never
 trigger movement.
 
 **What would you add next?**
-Liveness detection so a printed photo can't fool it; a calibration step for the
-focal length; WebGPU for faster inference on supported browsers.
+Liveness detection so a printed photo can't fool it; WebGPU for faster
+inference on supported browsers.
 
 **What's the honest limitation?**
 The browser uses the compact model (MobileFaceNet) for speed; the desktop app
@@ -104,6 +130,10 @@ The InsightFace models are licensed for non-commercial research only.
   (WebAssembly) in a Web Worker**; verified parity with Python (detections
   ≥ 99.7% IoU, embedding cosine ≥ 0.996). This fixed out-of-memory crashes in
   the cloud demo and made it private (no uploads) and free to host.
+- Added an **enrolment quality gate** (Laplacian-variance sharpness, brightness,
+  size and landmark-based head pose) with live fix-it hints, one-click
+  **focal-length calibration** for distance, and a **PCA "face map"** that
+  visualises the 512-D embedding space in the browser.
 - Raised live throughput from **3 to ~20 fps** with six faces by re-identifying
-  tracked faces every 6 frames instead of every frame; 53 automated tests
-  (41 Python + 12 JS) in CI.
+  tracked faces every 6 frames instead of every frame; 57 automated tests
+  (41 Python + 16 JS) in CI.
