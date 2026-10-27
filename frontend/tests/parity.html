@@ -1,0 +1,17 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>VisionGuard parity test</title>
+<img id="img" src="/tests/fixtures/t1.jpg" />
+<script type="module">
+  import { analyze, loadEngine } from "/src/vision/engine.js";
+  const img = document.getElementById("img");
+  await img.decode();
+  const load = await loadEngine();
+  const r640 = await analyze(img, { detSize: 640 });
+  const r320 = await analyze(img, { detSize: 320 });
+  window.__result = {
+    load,
+    r640: { timings: r640.timings, faces: r640.faces.map((f) => ({ bbox: f.bbox, score: f.score, kps: f.kps, emb: Array.from(f.embedding) })) },
+    r320: { timings: r320.timings, n: r320.faces.length },
+  };
+</script>

@@ -12,6 +12,8 @@ made from the Settings page back to disk.
 
 from __future__ import annotations
 
+import os
+
 import threading
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
@@ -137,10 +139,17 @@ class AppConfig:
             with open(cfg_path, "r", encoding="utf-8") as handle:
                 raw = yaml.safe_load(handle) or {}
 
+        # Environment override for the model pack: the cloud API runs on a
+        # 512 MB free instance, where buffalo_l (ResNet-50) is OOM-killed, so
+        # deployments set VISIONGUARD_MODEL=buffalo_sc (MobileFaceNet, ~16 MB).
+        face_cfg = dict(raw.get("face_analysis", {}))
+        if os.environ.get("VISIONGUARD_MODEL"):
+            face_cfg["model_name"] = os.environ["VISIONGUARD_MODEL"]
+
         instance = cls(
             app=AppSection(**raw.get("app", {})),
             paths=PathsSection(**raw.get("paths", {})),
-            face_analysis=FaceAnalysisSection(**raw.get("face_analysis", {})),
+            face_analysis=FaceAnalysisSection(**face_cfg),
             enrollment=EnrollmentSection(**raw.get("enrollment", {})),
             recognition=RecognitionSection(**raw.get("recognition", {})),
             distance=DistanceSection(**raw.get("distance", {})),

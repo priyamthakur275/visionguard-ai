@@ -29,7 +29,7 @@ def client():
 def test_serve_index(client: TestClient):
     response = client.get("/")
     assert response.status_code == 200
-    assert "VisionGuard AI" in response.text
+    assert "VisionGuard" in response.text
 
 
 def test_api_health(client: TestClient):

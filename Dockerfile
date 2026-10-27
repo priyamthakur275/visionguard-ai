@@ -79,6 +79,11 @@ COPY app/ ./app/
 COPY config.yaml ./config.yaml
 COPY data/ ./data/
 
+# Compact model pack for the 512 MB cloud instance (the desktop app keeps
+# buffalo_l). Downloaded at build time so cold starts don't re-download it.
+ENV VISIONGUARD_MODEL=buffalo_sc
+RUN python -c "from insightface.app import FaceAnalysis; FaceAnalysis(name='buffalo_sc', root='/app/data/models', providers=['CPUExecutionProvider'])" || true
+
 # Expose port (Render overrides this dynamically via $PORT)
 EXPOSE 8000
 
